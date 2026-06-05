@@ -1,0 +1,28 @@
+plugins {
+    id 'com.palantir.docker' version '0.36.0'
+}
+
+group = 'com.modudrive.eureka-server'
+version = '0.0.1-SNAPSHOT'
+
+ext {
+    set('springCloudVersion', "2023.0.3")
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+    }
+}
+
+dependencies {
+    implementation 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-server'
+}
+
+docker {
+    println(tasks.bootJar.outputs.files)
+    name rootProject.name+'-'+project.name + ":" + version
+    dockerfile file('../../infrastructure/docker/Dockerfile')
+    files tasks.bootJar.outputs.files
+    buildArgs(['JAR_FILE': tasks.bootJar.outputs.files.singleFile.name])
+}

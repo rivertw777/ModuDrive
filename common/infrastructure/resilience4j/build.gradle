@@ -1,0 +1,34 @@
+group = 'com.modudrive.common.infrastructure.resilience4j'
+
+repositories {
+    mavenCentral()
+}
+
+ext {
+    set('springCloudVersion', "2023.0.3")
+}
+
+dependencyManagement {
+    imports {
+        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
+    }
+}
+
+dependencies {
+    api 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-resilience4j'
+
+    implementation project(':common:core')
+    implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
+}
+
+bootRun {
+    enabled = false
+}
+
+bootJar {
+    enabled = false
+}
+
+bootBuildImage{
+    enabled = false
+}

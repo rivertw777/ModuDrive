@@ -1,0 +1,21 @@
+group = 'com.modudrive.common.api'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    implementation 'org.springframework.boot:spring-boot-starter-validation'
+}
+
+bootRun {
+    enabled = false
+}
+
+bootJar {
+    enabled = false
+}
+
+bootBuildImage{
+    enabled = false
+}
