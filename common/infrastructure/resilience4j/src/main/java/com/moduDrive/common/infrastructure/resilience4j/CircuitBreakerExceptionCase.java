@@ -7,7 +7,7 @@ import org.springframework.http.HttpStatus;
 
 @Getter
 @RequiredArgsConstructor
-enum CircuitBreakerExceptionCase implements ExceptionCase {
+public enum CircuitBreakerExceptionCase implements ExceptionCase {
 
     SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "서비스가 연결 불가능합니다. 잠시 후 다시 시도해주세요."),
     CONNECTION_TIMEOUT(HttpStatus.GATEWAY_TIMEOUT, "서비스 요청 시간이 초과되었습니다. 잠시 후 다시 시도해주세요."),
