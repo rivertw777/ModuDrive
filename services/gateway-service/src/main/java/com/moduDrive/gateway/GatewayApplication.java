@@ -5,7 +5,11 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import reactivefeign.spring.config.EnableReactiveFeignClients;
 
 @EnableReactiveFeignClients
-@SpringBootApplication
+@SpringBootApplication(scanBasePackages = {
+        "com.moduDrive.gateway",
+        "com.moduDrive.common.core",
+        "com.moduDrive.common.infrastructure.resilience4j"
+})
 public class GatewayApplication {
     public static void main(String[] args) {
         SpringApplication.run(GatewayApplication.class, args);
