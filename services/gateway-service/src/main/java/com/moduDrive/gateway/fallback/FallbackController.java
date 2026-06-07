@@ -1,7 +1,7 @@
 package com.moduDrive.gateway.fallback;
 
 import com.moduDrive.common.core.web.ApiResponse;
-import com.moduDrive.gateway.common.CircuitBreakerExceptionCase;
+import com.moduDrive.common.infrastructure.resilience4j.CircuitBreakerExceptionCase;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cloud.gateway.support.ServerWebExchangeUtils;
