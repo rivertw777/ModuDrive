@@ -2,14 +2,6 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Answer Logging Rule
-
-Every response must be saved as a Markdown file under `answer/` in the project root.
-
-- Naming: `NNN_slug.md` (e.g. `001_datasource-proxy-setup.md`) — sequential three-digit number + short kebab-case description
-- Content: the full response text in Markdown
-- One file per conversation turn (one user question = one answer file)
-
 ## Project Overview
 
 ModuDrive is a cloud-drive microservices backend built with **Spring Boot 3.3.4**, **Java 17**, and **Spring Cloud 2023.0.3**, organized as a Gradle multi-module project. Services communicate via Netflix Eureka (service discovery) and OpenFeign (inter-service HTTP calls), with Resilience4j providing circuit breaking and retry.
@@ -117,3 +109,11 @@ Each service defines a `<Domain>ExceptionCase` enum implementing `ExceptionCase`
 ## Testing
 
 Tests use **JUnit 5** (`useJUnitPlatform()`) with H2 in-memory database for JPA services (no MySQL required for tests). Test heap is capped at 1 GB. Test classes live in `src/test/java` mirroring the main package structure.
+
+## Answer Logging Rule
+
+Every response must be saved as a Markdown file under `.claude/answer/` in the project root.
+
+- Naming: `NNN_slug.md` (e.g. `001_datasource-proxy-setup.md`) — sequential three-digit number + short kebab-case description
+- Content: the full response text in Markdown
+- One file per conversation turn (one user question = one answer file)

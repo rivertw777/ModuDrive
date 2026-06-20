@@ -10,13 +10,12 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 
 @Aspect
-@Component
-class LoggingAspect {
+public class LoggingAspect {
+
     private static final Logger logger = LoggerFactory.getLogger(LoggingAspect.class);
 
     // 예외 발생 시 로깅
-    @AfterThrowing(pointcut = "execution(* com.moduDrive.*.application.service.*.*(..))",
-            throwing = "ex")
+    @AfterThrowing(pointcut = "execution(* com.moduDrive.*.application.service.*.*(..))", throwing = "ex")
     public void logAfterThrowing(JoinPoint joinPoint, Throwable ex) {
         String methodName = joinPoint.getSignature().getName();
         String className = joinPoint.getSignature().getDeclaringTypeName();

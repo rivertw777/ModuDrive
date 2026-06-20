@@ -5,12 +5,14 @@ import io.github.resilience4j.retry.event.RetryOnRetryEvent;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Configuration;
 
 @Slf4j
 @Configuration
 @RequiredArgsConstructor
-class RetryEventConfig {
+@ConditionalOnClass(RetryRegistry.class)
+public class RetryEventConfig {
 
     private final RetryRegistry retryRegistry;
 
