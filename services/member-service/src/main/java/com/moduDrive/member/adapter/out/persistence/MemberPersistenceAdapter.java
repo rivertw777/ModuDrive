@@ -10,7 +10,9 @@ import com.moduDrive.member.domain.model.Member;
 import com.moduDrive.member.domain.model.Member.MemberEmail;
 import com.moduDrive.member.domain.model.Member.MemberId;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
+@Slf4j
 @RequiredArgsConstructor
 @PersistenceAdapter
 class MemberPersistenceAdapter implements SignUpMemberPort, FindMemberPort, CheckEmailExistsPort {
@@ -38,6 +40,7 @@ class MemberPersistenceAdapter implements SignUpMemberPort, FindMemberPort, Chec
 
     @Override
     public Member findMemberByEmail(MemberEmail memberEmail) {
+        log.debug("findMemberByEmail: {}", memberEmail.emailValue());
         MemberJpaEntity entity = springDataMemberRepository.findByEmail(memberEmail.emailValue())
                 .orElseThrow(() -> new BusinessException(MemberExceptionCase.MEMBER_NOT_FOUND));
 
