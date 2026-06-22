@@ -7,12 +7,14 @@ import io.github.resilience4j.circuitbreaker.event.CircuitBreakerOnStateTransiti
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.context.annotation.Configuration;
 
 @Slf4j
 @Configuration
 @RequiredArgsConstructor
-class CircuitBreakerEventConfig {
+@ConditionalOnClass(CircuitBreakerRegistry.class)
+public class CircuitBreakerEventConfig {
 
     private final CircuitBreakerRegistry circuitBreakerRegistry;
 

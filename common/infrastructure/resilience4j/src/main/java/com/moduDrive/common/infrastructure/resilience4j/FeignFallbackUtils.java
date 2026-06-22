@@ -6,6 +6,7 @@ import feign.RetryableException;
 import io.github.resilience4j.circuitbreaker.CallNotPermittedException;
 import lombok.extern.slf4j.Slf4j;
 
+
 @Slf4j
 public class FeignFallbackUtils {
 
