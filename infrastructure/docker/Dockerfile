@@ -1,4 +1,4 @@
-FROM eclipse-temurin:17-jdk-alpine
+FROM eclipse-temurin:25-jdk-alpine
 EXPOSE 8080
 ARG JAR_FILE
 COPY ${JAR_FILE} app.jar

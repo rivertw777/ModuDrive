@@ -5,24 +5,20 @@ repositories {
 }
 
 ext {
-    set('springCloudVersion', "2023.0.3")
-}
-
-dependencyManagement {
-    imports {
-        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
-    }
+    set('springCloudVersion', "2025.1.1")
 }
 
 dependencies {
+    implementation platform("org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}")
+
     api 'org.springframework.cloud:spring-cloud-starter-netflix-eureka-client'
 
     implementation 'org.springframework.cloud:spring-cloud-starter-openfeign'
-    implementation 'org.springframework.boot:spring-boot-starter-aop'
+    implementation 'org.springframework.boot:spring-boot-starter-aspectj'
     implementation 'org.springframework.boot:spring-boot-starter-validation'
     implementation 'org.springframework:spring-web'
     implementation 'com.fasterxml.jackson.core:jackson-databind'
-    implementation 'jakarta.servlet:jakarta.servlet-api:6.0.0'
+    implementation 'jakarta.servlet:jakarta.servlet-api'
 }
 
 bootRun {
