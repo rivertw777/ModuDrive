@@ -1,5 +1,6 @@
 package com.moduDrive.common.core.web;
 
+import com.fasterxml.jackson.annotation.JsonAutoDetect;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.moduDrive.common.core.exception.ExceptionCase;
 import lombok.Builder;
@@ -9,11 +10,14 @@ import org.springframework.http.HttpStatus;
 @Builder
 @Getter
 @JsonInclude(JsonInclude.Include.NON_NULL)
+@JsonAutoDetect(fieldVisibility = JsonAutoDetect.Visibility.ANY)
 public class ApiResponse<T> {
 
     private HttpStatus status;
     private String message;
     private T data;
+
+    ApiResponse() {}
 
     public static <T> ApiResponse<T> success(T data) {
         return ApiResponse.<T>builder()
