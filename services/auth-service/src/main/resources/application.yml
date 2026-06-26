@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: auth-service
+  profiles:
+    active: dev
+  main:
+    web-application-type: SERVLET
+  config:
+    import:
+      - "classpath:application-resilience4j.yml"
+
+jwt:
+  secret: ${JWT_SECRET_KEY}
+  accessToken:
+    expiration: 3600000  # 1시간
+  refreshToken:
+    expiration: 604800000  # 7일
+
+resilience4j:
+  retry:
+    instances:
+      memberServiceRetry:
+        baseConfig: default
+  circuitbreaker:
+    instances:
+      memberServiceCircuitBreaker:
+        baseConfig: default

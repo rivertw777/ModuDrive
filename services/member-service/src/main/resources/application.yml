@@ -1,0 +1,11 @@
+spring:
+  application:
+    name: member-service
+  profiles:
+    active: dev
+  main:
+    web-application-type: SERVLET
+  config:
+    import:
+      - "classpath:application-jpa.yml"
+      - "classpath:application-resilience4j.yml"

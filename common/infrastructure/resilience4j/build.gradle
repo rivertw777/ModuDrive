@@ -5,16 +5,12 @@ repositories {
 }
 
 ext {
-    set('springCloudVersion', "2023.0.3")
-}
-
-dependencyManagement {
-    imports {
-        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
-    }
+    set('springCloudVersion', "2025.1.1")
 }
 
 dependencies {
+    implementation platform("org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}")
+
     api 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-resilience4j'
 
     implementation project(':common:core')
