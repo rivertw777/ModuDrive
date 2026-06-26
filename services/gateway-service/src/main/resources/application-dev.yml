@@ -1,0 +1,8 @@
+springdoc:
+  swagger-ui:
+    urls:
+      - name: member-service
+        url: /member-service/v3/api-docs
+      - name: auth-service
+        url: /auth-service/v3/api-docs
+    path: /swagger-ui.html
