@@ -27,7 +27,8 @@ class SecurityConfig {
                         .pathMatchers("/api/v1/member/sign-up").permitAll()
                         .pathMatchers("/api/v1/auth/login").permitAll()
                         .pathMatchers("/api/v1/auth/validate-token").permitAll()
-                        .pathMatchers("/swagger-ui/**", "/v3/api-docs/**", "/webjars/**", "/*/v3/api-docs/**").permitAll()
+                        .pathMatchers("/swagger-ui/**", "/v3/api-docs/**", "/webjars/**",
+                                "/*/v3/api-docs", "/*/v3/api-docs/**").permitAll()
                         .anyExchange().authenticated()
                 )
                 .securityContextRepository(securityContextRepository)

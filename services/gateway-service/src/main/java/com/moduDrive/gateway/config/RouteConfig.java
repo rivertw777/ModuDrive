@@ -18,7 +18,7 @@ class RouteConfig {
                 .route("auth-service", r -> r.path("/api/v1/auth/**")
                         .filters(f -> addCircuitBreaker(f, "authServiceCircuitBreaker"))
                         .uri("lb://auth-service"))
-.build();
+                .build();
     }
 
     private GatewayFilterSpec addCircuitBreaker(GatewayFilterSpec filterSpec, String circuitBreakerName) {
