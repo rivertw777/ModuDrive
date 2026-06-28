@@ -1,39 +1,43 @@
+import com.bmuschko.gradle.docker.tasks.image.DockerBuildImage
+
 plugins {
-    id 'com.palantir.docker' version '0.36.0'
+    id 'com.bmuschko.docker-remote-api' version '10.0.0'
 }
 
 group = 'com.modudrive.gateway'
 version = '0.0.1-SNAPSHOT'
 
 ext {
-    set('springCloudVersion', "2023.0.3")
-}
-
-dependencyManagement {
-    imports {
-        mavenBom "org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}"
-    }
+    set('springCloudVersion', "2025.1.1")
 }
 
 dependencies {
+    implementation platform("org.springframework.cloud:spring-cloud-dependencies:${springCloudVersion}")
+
     implementation project(':common:core')
     implementation project(':common:api')
     implementation project(':common:infrastructure:resilience4j')
 
-    implementation 'org.springframework.cloud:spring-cloud-starter-gateway'
+    implementation 'org.springframework.cloud:spring-cloud-starter-gateway-server-webflux'
     implementation 'org.springframework.cloud:spring-cloud-starter-circuitbreaker-reactor-resilience4j'
-    implementation 'com.playtika.reactivefeign:feign-reactor-spring-cloud-starter:4.2.1'
-    implementation 'org.springdoc:springdoc-openapi-starter-webflux-ui:2.0.2'
+    implementation 'org.springframework.boot:spring-boot-starter-webclient'
+    implementation 'org.springdoc:springdoc-openapi-starter-webflux-ui:3.0.3'
     implementation 'org.springframework.boot:spring-boot-starter-security'
     implementation 'com.fasterxml.jackson.core:jackson-databind'
     implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jdk8'
     implementation 'com.fasterxml.jackson.datatype:jackson-datatype-jsr310'
 }
 
-docker {
-    println(tasks.bootJar.outputs.files)
-    name rootProject.name+'-'+project.name + ":" + version
-    dockerfile file('../../infrastructure/docker/Dockerfile')
-    files tasks.bootJar.outputs.files
-    buildArgs(['JAR_FILE': tasks.bootJar.outputs.files.singleFile.name])
+task prepareDockerContext(type: Copy) {
+    dependsOn bootJar
+    from bootJar
+    from rootProject.file('infrastructure/docker/Dockerfile')
+    into layout.buildDirectory.dir('docker')
+}
+
+task docker(type: DockerBuildImage) {
+    dependsOn prepareDockerContext
+    inputDir = layout.buildDirectory.dir('docker')
+    images.add("${rootProject.name}-${project.name}:${version}")
+    buildArgs = ['JAR_FILE': bootJar.archiveFileName.get()]
 }
