@@ -44,16 +44,18 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(FeignException.class)
     public ResponseEntity<ApiResponse<Object>> handleFeignException(FeignException feignException) throws JsonProcessingException {
         String responseJson = feignException.contentUTF8();
+
+        if (responseJson == null || responseJson.isBlank()) {
+            ApiResponse<Object> response = ApiResponse.error(HttpStatus.INTERNAL_SERVER_ERROR, "외부 서비스 오류");
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(response);
+        }
+
         Map<String, String> responseMap = objectMapper.readValue(responseJson, Map.class);
         String errorMessage = responseMap.getOrDefault("message", "외부 서비스 오류");
 
-        ApiResponse<Object> response = ApiResponse.error(
-                HttpStatus.valueOf(feignException.status()),
-                errorMessage
-        );
-        return ResponseEntity
-                .status(feignException.status())
-                .body(response);
+        int statusCode = feignException.status() > 0 ? feignException.status() : 500;
+        ApiResponse<Object> response = ApiResponse.error(HttpStatus.valueOf(statusCode), errorMessage);
+        return ResponseEntity.status(statusCode).body(response);
     }
 
     @ExceptionHandler(Exception.class)
