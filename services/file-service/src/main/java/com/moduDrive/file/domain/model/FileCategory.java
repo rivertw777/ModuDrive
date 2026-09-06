@@ -7,7 +7,7 @@ public enum FileCategory {
 
     IMAGE(Set.of("png", "jpg", "jpeg", "gif", "webp", "svg", "bmp")),
     VIDEO(Set.of("mp4", "mov", "avi", "mkv", "webm")),
-    DOCUMENT(Set.of("pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "hwp")),
+    DOCUMENT(Set.of("pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "md", "hwp")),
     AUDIO(Set.of("mp3", "wav", "flac", "aac", "m4a")),
     OTHER(Set.of());
 

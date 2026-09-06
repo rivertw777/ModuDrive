@@ -17,6 +17,7 @@ class FileCategoryTest {
             assertThat(FileCategory.IMAGE.matches("photo.PNG")).isTrue();
             assertThat(FileCategory.VIDEO.matches("clip.mp4")).isTrue();
             assertThat(FileCategory.DOCUMENT.matches("report.docx")).isTrue();
+            assertThat(FileCategory.DOCUMENT.matches("notes.md")).isTrue();
             assertThat(FileCategory.AUDIO.matches("song.mp3")).isTrue();
         }
     }
