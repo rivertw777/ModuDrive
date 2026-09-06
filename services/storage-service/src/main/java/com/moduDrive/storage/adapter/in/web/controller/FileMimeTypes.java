@@ -35,7 +35,8 @@ final class FileMimeTypes {
             Map.entry("mov", MediaType.valueOf("video/quicktime")),
             Map.entry("avi", MediaType.valueOf("video/x-msvideo")),
             Map.entry("mkv", MediaType.valueOf("video/x-matroska")),
-            Map.entry("txt", MediaType.valueOf("text/plain;charset=UTF-8"))
+            Map.entry("txt", MediaType.valueOf("text/plain;charset=UTF-8")),
+            Map.entry("md", MediaType.valueOf("text/plain;charset=UTF-8"))
     );
 
     private FileMimeTypes() {
