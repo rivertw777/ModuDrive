@@ -14,4 +14,4 @@ spring:
 
 modudrive:
   member:
-    email-verification-token-expiration: ${MEMBER_EMAIL_VERIFICATION_TOKEN_EXPIRATION:1800000}
+    email-verification-token-expiration: ${MEMBER_EMAIL_VERIFICATION_TOKEN_EXPIRATION:180000}

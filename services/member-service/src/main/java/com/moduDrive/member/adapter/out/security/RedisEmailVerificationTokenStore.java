@@ -15,6 +15,8 @@ class RedisEmailVerificationTokenStore implements EmailVerificationTokenPort {
     private static final String VERIFIED_PREFIX = "email-verified:";
     /** A 6-digit code only has 10^6 values; without a guess cap it's brute-forceable inside its TTL. */
     private static final int MAX_ATTEMPTS = 5;
+    /** Grace window to submit the sign-up form after verifying — independent of the (shorter) code TTL. */
+    private static final Duration VERIFIED_WINDOW = Duration.ofMinutes(30);
 
     private final RedisRepository redisRepository;
     private final long tokenExpiration;
@@ -61,7 +63,7 @@ class RedisEmailVerificationTokenStore implements EmailVerificationTokenPort {
 
     @Override
     public void markVerified(String email) {
-        redisRepository.set(verifiedKey(email), "true", Duration.ofMillis(tokenExpiration));
+        redisRepository.set(verifiedKey(email), "true", VERIFIED_WINDOW);
     }
 
     @Override
