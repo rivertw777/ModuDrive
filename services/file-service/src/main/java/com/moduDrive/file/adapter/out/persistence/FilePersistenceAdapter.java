@@ -369,6 +369,11 @@ class FilePersistenceAdapter implements
     }
 
     @Override
+    public boolean existsByFileIdIn(List<FileId> fileIds) {
+        return fileShareRepository.existsByFileIdIn(fileIds.stream().map(FileId::value).toList());
+    }
+
+    @Override
     public List<FileShare> findBySharedWithUserId(UUID sharedWithUserId) {
         return fileShareRepository.findBySharedWithUserIdOrderByCreatedAtDesc(sharedWithUserId)
                 .stream()

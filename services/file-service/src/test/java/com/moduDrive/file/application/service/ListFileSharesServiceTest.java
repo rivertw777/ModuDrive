@@ -77,6 +77,7 @@ class ListFileSharesServiceTest {
             assertThat(result.inheritedShares()).isEmpty();
             assertThat(result.inheritedLinkSources()).isEmpty();
             assertThat(result.memberSummaries()).containsEntry(sharedWithUserId, summary);
+            assertThat(result.hasSharedDescendant()).isFalse();
         }
 
         @Test
@@ -194,6 +195,71 @@ class ListFileSharesServiceTest {
             FileSharesView result = listFileSharesService.listFileShares(command);
 
             assertThat(result.inheritedLinkSources()).containsExactly(parentDir);
+        }
+    }
+
+    @Nested
+    @DisplayName("조회 대상이 디렉토리일 때")
+    class WhenTargetIsDirectory {
+
+        private final UUID directoryId = UUID.randomUUID();
+        private final UUID namespaceId = UUID.randomUUID();
+        private final File directory = File.withId(new FileId(directoryId), new FileNamespaceId(namespaceId),
+                new FileName("folder"), new FilePath("/"), new FileOwnerId(ownerId),
+                null, null, FileStatus.UPLOADED, new FileIsDirectory(true));
+        private final ListFileSharesCommand directoryCommand = new ListFileSharesCommand(directoryId, ownerId);
+
+        private File descendantFile(String name) {
+            return File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespaceId),
+                    new FileName(name), new FilePath(directory.fullPath()), new FileOwnerId(ownerId),
+                    null, null, FileStatus.UPLOADED, new FileIsDirectory(false));
+        }
+
+        @Test
+        @DisplayName("하위 항목 중 하나라도 공유 중이면 hasSharedDescendant=true")
+        void flagsTrueWhenAnyDescendantIsShared() {
+            File child = descendantFile("child.txt");
+            given(findFilePort.findById(directoryCommand.getFileId())).willReturn(Optional.of(directory));
+            given(findFileSharePort.findByFileId(directoryCommand.getFileId())).willReturn(List.of());
+            given(fileAccessGuard.ancestorDirectories(directory)).willReturn(List.of());
+            given(findFilePort.findByNamespaceIdAndPathStartingWith(any(), eq(directory.fullPath())))
+                    .willReturn(List.of(child));
+            given(findFileSharePort.existsByFileIdIn(List.of(new FileId(child.getId())))).willReturn(true);
+
+            FileSharesView result = listFileSharesService.listFileShares(directoryCommand);
+
+            assertThat(result.hasSharedDescendant()).isTrue();
+        }
+
+        @Test
+        @DisplayName("하위 항목이 있어도 아무도 공유돼 있지 않으면 hasSharedDescendant=false")
+        void flagsFalseWhenNoDescendantIsShared() {
+            File child = descendantFile("child.txt");
+            given(findFilePort.findById(directoryCommand.getFileId())).willReturn(Optional.of(directory));
+            given(findFileSharePort.findByFileId(directoryCommand.getFileId())).willReturn(List.of());
+            given(fileAccessGuard.ancestorDirectories(directory)).willReturn(List.of());
+            given(findFilePort.findByNamespaceIdAndPathStartingWith(any(), eq(directory.fullPath())))
+                    .willReturn(List.of(child));
+            given(findFileSharePort.existsByFileIdIn(List.of(new FileId(child.getId())))).willReturn(false);
+
+            FileSharesView result = listFileSharesService.listFileShares(directoryCommand);
+
+            assertThat(result.hasSharedDescendant()).isFalse();
+        }
+
+        @Test
+        @DisplayName("하위 항목이 없으면 existsByFileIdIn을 호출하지 않고 곧장 false")
+        void skipsShareLookupWhenSubtreeIsEmpty() {
+            given(findFilePort.findById(directoryCommand.getFileId())).willReturn(Optional.of(directory));
+            given(findFileSharePort.findByFileId(directoryCommand.getFileId())).willReturn(List.of());
+            given(fileAccessGuard.ancestorDirectories(directory)).willReturn(List.of());
+            given(findFilePort.findByNamespaceIdAndPathStartingWith(any(), eq(directory.fullPath())))
+                    .willReturn(List.of());
+
+            FileSharesView result = listFileSharesService.listFileShares(directoryCommand);
+
+            assertThat(result.hasSharedDescendant()).isFalse();
+            then(findFileSharePort).should(org.mockito.Mockito.never()).existsByFileIdIn(any());
         }
     }
 

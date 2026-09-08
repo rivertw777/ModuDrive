@@ -55,7 +55,16 @@ class ListSharedDirectoryServiceTest {
         lenient().when(fileAccessGuard.effectiveRole(any(), any())).thenReturn(null);
         lenient().when(fileAccessGuard.resolveGrant(any(), any())).thenReturn(Optional.empty());
         lenient().when(findMemberByIdPort.findMemberById(any())).thenReturn(new MemberSummary("홍길동", "owner@modudrive.com"));
-        lenient().when(findFileSharePort.existsByFileIdAndSharedWithUserId(any(), any())).thenReturn(false);
+        lenient().when(findFileSharePort.findByFileIdAndSharedWithUserId(any(), any())).thenReturn(Optional.empty());
+        // Real moreGenerous semantics (EDITOR ⊃ VIEWER) so tests exercise the same precedence
+        // ListSharedDirectoryService relies on, without depending on a real FileAccessGuard.
+        lenient().when(fileAccessGuard.moreGenerous(any(), any())).thenAnswer(invocation -> {
+            Role a = invocation.getArgument(0);
+            Role b = invocation.getArgument(1);
+            if (a == Role.EDITOR || b == Role.EDITOR) return Role.EDITOR;
+            if (a == Role.VIEWER || b == Role.VIEWER) return Role.VIEWER;
+            return null;
+        });
     }
 
     private final UUID dirId = UUID.randomUUID();
@@ -116,19 +125,57 @@ class ListSharedDirectoryServiceTest {
         }
 
         @Test
-        @DisplayName("자식이 호출자에게 따로 직접 공유돼 있으면 목록에서 빠진다 (구글 드라이브와 동일 — 그건 최상위 자기 항목으로 따로 뜬다)")
-        void excludesAChildTheCallerAlreadyHasADirectShareOn() {
+        @DisplayName("자식이 호출자에게 따로 직접 공유돼 있어도 목록에 그대로 뜨고, 직접 공유의 권한/날짜가 우선한다")
+        void includesAChildWithItsOwnDirectShareUsingTheDirectGrantsRoleAndDate() {
             File plainChild = entry("b.txt", "/shared", false, FileStatus.UPLOADED);
             File individuallySharedChild = entry("a.txt", "/shared", false, FileStatus.UPLOADED);
+            LocalDateTime directSharedAt = LocalDateTime.of(2026, 9, 8, 9, 0);
+            FileShare directGrant = FileShare.withId(new FileShare.FileShareId(UUID.randomUUID()),
+                    new FileShare.FileShareFileId(individuallySharedChild.getId()),
+                    new FileShare.FileShareOwnerId(UUID.randomUUID()),
+                    new FileShare.FileShareSharedWithUserId(callerId), new FileShare.FileShareRole(Role.EDITOR),
+                    directSharedAt);
             given(findFilePort.findById(command.getDirectoryId())).willReturn(Optional.of(dir()));
             given(findFilePort.findByNamespaceIdAndPath(new NamespaceId(namespaceId), "/shared"))
                     .willReturn(List.of(plainChild, individuallySharedChild));
-            given(findFileSharePort.existsByFileIdAndSharedWithUserId(
-                    new FileId(individuallySharedChild.getId()), callerId)).willReturn(true);
+            given(fileAccessGuard.effectiveRole(any(), eq(callerId))).willReturn(Role.VIEWER);
+            given(findFileSharePort.findByFileIdAndSharedWithUserId(
+                    new FileId(individuallySharedChild.getId()), callerId)).willReturn(Optional.of(directGrant));
 
             List<FileView> result = listSharedDirectoryService.listSharedDirectory(command);
 
-            assertThat(result).extracting(FileView::file).containsExactly(plainChild);
+            assertThat(result).extracting(FileView::file).containsExactlyInAnyOrder(plainChild, individuallySharedChild);
+            FileView directView = result.stream()
+                    .filter(v -> v.file().equals(individuallySharedChild))
+                    .findFirst().orElseThrow();
+            assertThat(directView.callerRole()).isEqualTo(Role.EDITOR);
+            assertThat(directView.sharedAt()).isEqualTo(directSharedAt);
+            FileView plainView = result.stream().filter(v -> v.file().equals(plainChild)).findFirst().orElseThrow();
+            assertThat(plainView.callerRole()).isEqualTo(Role.VIEWER);
+        }
+
+        @Test
+        @DisplayName("직접 공유 권한이 상속 권한보다 약하면, 더 관대한 상속 권한이 이긴다 (날짜는 직접 공유 것)")
+        void aWeakerDirectGrantDoesNotDowngradeAStrongerInheritedRole() {
+            File individuallySharedChild = entry("a.txt", "/shared", false, FileStatus.UPLOADED);
+            LocalDateTime directSharedAt = LocalDateTime.of(2026, 9, 8, 9, 0);
+            FileShare directGrant = FileShare.withId(new FileShare.FileShareId(UUID.randomUUID()),
+                    new FileShare.FileShareFileId(individuallySharedChild.getId()),
+                    new FileShare.FileShareOwnerId(UUID.randomUUID()),
+                    new FileShare.FileShareSharedWithUserId(callerId), new FileShare.FileShareRole(Role.VIEWER),
+                    directSharedAt);
+            given(findFilePort.findById(command.getDirectoryId())).willReturn(Optional.of(dir()));
+            given(findFilePort.findByNamespaceIdAndPath(new NamespaceId(namespaceId), "/shared"))
+                    .willReturn(List.of(individuallySharedChild));
+            given(fileAccessGuard.effectiveRole(any(), eq(callerId))).willReturn(Role.EDITOR);
+            given(findFileSharePort.findByFileIdAndSharedWithUserId(
+                    new FileId(individuallySharedChild.getId()), callerId)).willReturn(Optional.of(directGrant));
+
+            List<FileView> result = listSharedDirectoryService.listSharedDirectory(command);
+
+            assertThat(result).hasSize(1);
+            assertThat(result.get(0).callerRole()).isEqualTo(Role.EDITOR);
+            assertThat(result.get(0).sharedAt()).isEqualTo(directSharedAt);
         }
     }
 
