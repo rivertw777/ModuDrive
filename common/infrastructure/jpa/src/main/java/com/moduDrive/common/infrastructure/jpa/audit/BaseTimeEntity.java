@@ -40,18 +40,15 @@ public class BaseTimeEntity {
     @Column
     private LocalDateTime deletedAt;
 
-    /** No {@code @DeletedBy} auditing hook exists in Spring Data — the caller passes their own id
-     * in explicitly, same as they already do for {@code deletedAt} via this method. */
+    /** No {@code @DeletedBy} auditing hook exists in Spring Data — a caller that soft-deletes a
+     * row must set {@code deletedAt}/{@code deletedBy} itself. (The one real soft-delete flow,
+     * {@code FileJpaEntity}'s trash/purge, does this via a dedicated JPQL {@code UPDATE} —
+     * {@code SpringDataFileRepository.markPurged} — rather than through this entity, since it
+     * also needs to skip the {@code @LastModifiedDate} bump a normal save would trigger.) */
     @Column
     private UUID deletedBy;
 
     @Column
     private Boolean isDeleted = false;
-
-    public void delete(UUID deletedBy) {
-        isDeleted = true;
-        deletedAt = LocalDateTime.now();
-        this.deletedBy = deletedBy;
-    }
 
 }
