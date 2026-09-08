@@ -25,6 +25,10 @@ public interface FindFileSharePort {
 
     List<FileShare> findByFileId(FileId fileId);
 
+    /** Whether any of these files holds an active share — used to check a directory's whole
+     * subtree at once (see {@code ListFileSharesService}) rather than one query per descendant. */
+    boolean existsByFileIdIn(List<FileId> fileIds);
+
     List<FileShare> findBySharedWithUserId(UUID sharedWithUserId);
 
     /** Pending guest shares (see {@link FileShare#createPending}) invited to this email, waiting

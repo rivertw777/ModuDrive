@@ -11,6 +11,7 @@ import com.moduDrive.file.application.port.out.FindMemberByIdPort;
 import com.moduDrive.file.application.port.out.FindMemberByIdPort.MemberSummary;
 import com.moduDrive.file.domain.model.File;
 import com.moduDrive.file.domain.model.FileShare;
+import com.moduDrive.file.domain.model.Namespace.NamespaceId;
 import com.moduDrive.file.domain.model.Role;
 import com.moduDrive.file.domain.model.ShareScope;
 import com.moduDrive.file.exception.FileExceptionCase;
@@ -92,7 +93,21 @@ class ListFileSharesService implements ListFileSharesUseCase {
                 .distinct()
                 .collect(Collectors.toMap(Function.identity(), this::lookupMemberSummary));
 
-        return new FileSharesView(file, shares, inheritedShares, inheritedLinkSources, memberSummaries);
+        boolean hasSharedDescendant = file.isDirectory() && hasSharedDescendant(file);
+
+        return new FileSharesView(file, shares, inheritedShares, inheritedLinkSources, memberSummaries,
+                hasSharedDescendant);
+    }
+
+    private boolean hasSharedDescendant(File directory) {
+        List<File.FileId> descendantIds = findFilePort
+                .findByNamespaceIdAndPathStartingWith(new NamespaceId(directory.getNamespaceId()), directory.fullPath())
+                .stream()
+                .map(descendant -> new File.FileId(descendant.getId()))
+                .toList();
+        // existsByFileIdIn on an empty id list is never called — an IN () clause is invalid SQL
+        // on some drivers, and an empty subtree obviously has nothing shared in it anyway.
+        return !descendantIds.isEmpty() && findFileSharePort.existsByFileIdIn(descendantIds);
     }
 
     private MemberSummary lookupMemberSummary(UUID memberId) {

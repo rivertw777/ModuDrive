@@ -34,7 +34,12 @@ public interface ListFileSharesUseCase {
             List<FileShare> shares,
             List<InheritedShare> inheritedShares,
             List<File> inheritedLinkSources,
-            Map<UUID, MemberSummary> memberSummaries) {
+            Map<UUID, MemberSummary> memberSummaries,
+            /** True if this file is a directory and some file/folder nested under it (at any
+             * depth) holds an active share — trashing this directory cascades to that descendant
+             * too (see DirectoryCascader), cutting off its access even when this directory's own
+             * {@code shares}/{@code inheritedShares} are empty. Always false for a non-directory. */
+            boolean hasSharedDescendant) {
 
         public record InheritedShare(FileShare share, File source) {}
     }

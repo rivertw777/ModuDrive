@@ -143,7 +143,7 @@ class FileAccessGuard {
 
     /** {@link Role} is a closed enum, not a permission set, so "combine two grants" is just
      * "take the one that grants more" — EDITOR ⊃ VIEWER. */
-    private Role moreGenerous(Role a, Role b) {
+    Role moreGenerous(Role a, Role b) {
         if (a == Role.EDITOR || b == Role.EDITOR) {
             return Role.EDITOR;
         }

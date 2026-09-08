@@ -16,7 +16,9 @@ public record FileAccessListResponse(
         List<FileShareResponse> shares,
         /** Directories above this file that are currently "anyone with the link" — this file is
          * reachable through them. Empty unless an ancestor folder is link-shared. */
-        List<InheritedLinkResponse> inheritedLinks
+        List<InheritedLinkResponse> inheritedLinks,
+        /** See {@link FileSharesView#hasSharedDescendant()}. */
+        boolean hasSharedDescendant
 ) {
     public record InheritedLinkResponse(UUID fileId, String name, Role role) {}
 
@@ -51,7 +53,8 @@ public record FileAccessListResponse(
                 view.file().getAccessScope(),
                 view.file().getLinkToken(),
                 shares,
-                inheritedLinks
+                inheritedLinks,
+                view.hasSharedDescendant()
         );
     }
 }

@@ -66,16 +66,22 @@ class ListSharedDirectoryService implements ListSharedDirectoryUseCase {
                 .findByNamespaceIdAndPath(new NamespaceId(directory.getNamespaceId()), directory.fullPath())
                 .stream()
                 .filter(child -> child.getStatus() != FileStatus.DELETED)
-                // A child the caller also has their own direct share on lives at the top level of
-                // 공유 문서함 as its own entry (see ListSharedWithMeService) — verified against real
-                // Drive, opening the ancestor folder does NOT also show it there as a child.
-                .filter(child -> !findFileSharePort.existsByFileIdAndSharedWithUserId(new FileId(child.getId()), callerId))
                 .map(child -> {
                     if (child.getOwnerId().equals(callerId)) {
                         return FileView.owned(child);
                     }
                     child.markFavorite(favoriteIds.contains(child.getId()));
-                    return new FileView(child, inheritedRole, sharedBy.name(), sharedBy.email(), sharedAt, null, null);
+                    // A child can also hold its own direct share to the caller (see
+                    // ShareFileService) alongside this folder's inherited one — unfiltered, so it
+                    // shows here too. Role is the more generous of the two grants (matches
+                    // FileAccessGuard, the single authority on effective role — a weaker direct
+                    // grant must not mask a stronger inherited one); the date is the direct
+                    // grant's own, since that's the row the caller was actually notified about.
+                    Optional<FileShare> direct =
+                            findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(child.getId()), callerId);
+                    Role role = fileAccessGuard.moreGenerous(direct.map(FileShare::getRole).orElse(null), inheritedRole);
+                    LocalDateTime sharedOn = direct.map(FileShare::getCreatedAt).orElse(sharedAt);
+                    return new FileView(child, role, sharedBy.name(), sharedBy.email(), sharedOn, null, null);
                 })
                 .toList();
     }
