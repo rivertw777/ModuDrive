@@ -41,26 +41,27 @@ class PurgeExpiredTrashServiceTest {
 
             File fileInA = File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespaceA),
                     new FileName("old.pdf"), new FilePath("/1"),
-                    new FileOwnerId(UUID.randomUUID()), null, null, FileStatus.DELETED, new FileIsDirectory(false));
+                    new FileOwnerId(UUID.randomUUID()), null, null, FileStatus.TRASHED, new FileIsDirectory(false));
             File directoryInA = File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespaceA),
                     new FileName("폴더"), new FilePath("/1"),
-                    new FileOwnerId(UUID.randomUUID()), null, null, FileStatus.DELETED, new FileIsDirectory(true));
+                    new FileOwnerId(UUID.randomUUID()), null, null, FileStatus.TRASHED, new FileIsDirectory(true));
             File nestedFileInA = File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespaceA),
                     new FileName("b.txt"), new FilePath("/1/폴더"),
-                    new FileOwnerId(UUID.randomUUID()), null, null, FileStatus.DELETED, new FileIsDirectory(false));
+                    new FileOwnerId(UUID.randomUUID()), null, null, FileStatus.TRASHED, new FileIsDirectory(false));
             File fileInB = File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespaceB),
                     new FileName("stale.png"), new FilePath("/2"),
-                    new FileOwnerId(UUID.randomUUID()), null, null, FileStatus.DELETED, new FileIsDirectory(false));
+                    new FileOwnerId(UUID.randomUUID()), null, null, FileStatus.TRASHED, new FileIsDirectory(false));
 
             given(findFilePort.findExpiredTrash(any(LocalDateTime.class)))
                     .willReturn(List.of(fileInA, directoryInA, nestedFileInA, fileInB));
 
             purgeExpiredTrashService.purgeExpiredTrash();
 
-            then(filePurger).should().purgeRoot(fileInA);
-            then(filePurger).should().purgeRoot(directoryInA);
-            then(filePurger).should().purgeRoot(fileInB);
-            then(filePurger).should(Mockito.never()).purgeRoot(nestedFileInA);
+            // No caller — a system-triggered sweep, not a user action; deletedBy is null.
+            then(filePurger).should().purgeRoot(fileInA, null);
+            then(filePurger).should().purgeRoot(directoryInA, null);
+            then(filePurger).should().purgeRoot(fileInB, null);
+            then(filePurger).should(Mockito.never()).purgeRoot(eq(nestedFileInA), any());
         }
     }
 
@@ -74,18 +75,18 @@ class PurgeExpiredTrashServiceTest {
             UUID namespaceB = UUID.randomUUID();
             File failing = File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespaceA),
                     new FileName("broken.pdf"), new FilePath("/1"),
-                    new FileOwnerId(UUID.randomUUID()), null, null, FileStatus.DELETED, new FileIsDirectory(false));
+                    new FileOwnerId(UUID.randomUUID()), null, null, FileStatus.TRASHED, new FileIsDirectory(false));
             File ok = File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespaceB),
                     new FileName("fine.pdf"), new FilePath("/2"),
-                    new FileOwnerId(UUID.randomUUID()), null, null, FileStatus.DELETED, new FileIsDirectory(false));
+                    new FileOwnerId(UUID.randomUUID()), null, null, FileStatus.TRASHED, new FileIsDirectory(false));
 
             given(findFilePort.findExpiredTrash(any(LocalDateTime.class)))
                     .willReturn(List.of(failing, ok));
-            willThrow(new RuntimeException("storage-service unreachable")).given(filePurger).purgeRoot(failing);
+            willThrow(new RuntimeException("storage-service unreachable")).given(filePurger).purgeRoot(failing, null);
 
             purgeExpiredTrashService.purgeExpiredTrash();
 
-            then(filePurger).should().purgeRoot(ok);
+            then(filePurger).should().purgeRoot(ok, null);
         }
     }
 

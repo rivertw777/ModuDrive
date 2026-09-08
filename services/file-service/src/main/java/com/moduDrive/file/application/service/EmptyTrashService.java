@@ -15,6 +15,7 @@ import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -45,14 +46,15 @@ class EmptyTrashService implements EmptyTrashUseCase {
                 .map(File::fullPath)
                 .collect(Collectors.toSet());
 
+        UUID callerId = command.getUserId().value();
         deleted.stream()
                 .filter(file -> !deletedDirectoryFullPaths.contains(file.getPath()))
-                .forEach(this::purgeRootSkippingFailures);
+                .forEach(root -> purgeRootSkippingFailures(root, callerId));
     }
 
-    private void purgeRootSkippingFailures(File root) {
+    private void purgeRootSkippingFailures(File root, UUID deletedBy) {
         try {
-            filePurger.purgeRoot(root);
+            filePurger.purgeRoot(root, deletedBy);
         } catch (RuntimeException e) {
             // One bad root (storage-service unreachable, a since-changed row) must not abort
             // every other root already queued in this empty-trash call.

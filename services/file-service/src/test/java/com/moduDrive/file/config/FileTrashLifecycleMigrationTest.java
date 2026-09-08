@@ -33,11 +33,12 @@ class FileTrashLifecycleMigrationTest {
 
         @BeforeEach
         void seedLegacySchema() {
-            // ddl-auto has already added trashed_at; the pre-trashed_at retention-sweep index is
-            // still around.
+            // ddl-auto has already added trashed_at/deleted_at; the pre-trashed_at
+            // retention-sweep index is still around.
             jdbcTemplate.execute("""
                     CREATE TABLE file (
-                        id UUID PRIMARY KEY, status VARCHAR(20), updated_at TIMESTAMP, trashed_at TIMESTAMP)
+                        id UUID PRIMARY KEY, status VARCHAR(20), updated_at TIMESTAMP,
+                        trashed_at TIMESTAMP, deleted_at TIMESTAMP)
                     """);
             jdbcTemplate.execute("CREATE INDEX ix_file_status_updated_at ON file (status, updated_at)");
         }
@@ -67,6 +68,28 @@ class FileTrashLifecycleMigrationTest {
         }
 
         @Test
+        @DisplayName("아직 퍼지되지 않은 DELETED 행은 TRASHED로, 이미 퍼지된 행은 그대로 DELETED로 남는다")
+        void splitsTrashedFromPurgedDeleted() {
+            UUID notYetPurged = UUID.randomUUID();
+            UUID alreadyPurged = UUID.randomUUID();
+            jdbcTemplate.update(
+                    "INSERT INTO file (id, status, updated_at, trashed_at, deleted_at) "
+                            + "VALUES (?, 'DELETED', ?, ?, NULL)",
+                    notYetPurged, LocalDateTime.now(), LocalDateTime.now());
+            jdbcTemplate.update(
+                    "INSERT INTO file (id, status, updated_at, trashed_at, deleted_at) "
+                            + "VALUES (?, 'DELETED', ?, ?, ?)",
+                    alreadyPurged, LocalDateTime.now(), LocalDateTime.now(), LocalDateTime.now());
+
+            migration.run(null);
+
+            assertThat(jdbcTemplate.queryForObject(
+                    "SELECT status FROM file WHERE id = ?", String.class, notYetPurged)).isEqualTo("TRASHED");
+            assertThat(jdbcTemplate.queryForObject(
+                    "SELECT status FROM file WHERE id = ?", String.class, alreadyPurged)).isEqualTo("DELETED");
+        }
+
+        @Test
         @DisplayName("다시 돌려도 오류 없이 끝난다")
         void isIdempotent() {
             jdbcTemplate.update(
@@ -75,6 +98,37 @@ class FileTrashLifecycleMigrationTest {
 
             migration.run(null);
             assertThatCode(() -> migration.run(null)).doesNotThrowAnyException();
+        }
+    }
+
+    @Nested
+    @DisplayName("trashed_at 백필이 실패할 때")
+    class WhenTrashedAtBackfillFails {
+
+        @BeforeEach
+        void seedSchemaMissingTrashedAt() {
+            // No trashed_at column at all — backfillTrashedAt's UPDATE throws, but status/deleted_at
+            // are still there, so splitTrashedFromDeleted's UPDATE would otherwise succeed fine.
+            jdbcTemplate.execute("""
+                    CREATE TABLE file (
+                        id UUID PRIMARY KEY, status VARCHAR(20), updated_at TIMESTAMP, deleted_at TIMESTAMP)
+                    """);
+        }
+
+        @Test
+        @DisplayName("status를 TRASHED로 넘기는 2단계는 건너뛴다")
+        void skipsTheStatusSplitStep() {
+            UUID trashed = UUID.randomUUID();
+            jdbcTemplate.update(
+                    "INSERT INTO file (id, status, updated_at, deleted_at) VALUES (?, 'DELETED', ?, NULL)",
+                    trashed, LocalDateTime.now());
+
+            assertThatCode(() -> migration.run(null)).doesNotThrowAnyException();
+
+            // Still DELETED — if step 2 had run despite step 1's failure, this would read TRASHED
+            // with trashed_at forever unbackfillable (the exact bug the ordering guard prevents).
+            assertThat(jdbcTemplate.queryForObject(
+                    "SELECT status FROM file WHERE id = ?", String.class, trashed)).isEqualTo("DELETED");
         }
     }
 

@@ -140,7 +140,7 @@ class ListFavoritesServiceTest {
             given(fileFavoritePort.favoritesByRecency(userId))
                     .willReturn(List.of(new FavoriteEntry(ownedId, LocalDateTime.now())));
             given(findFilePort.findById(new FileId(ownedId)))
-                    .willReturn(Optional.of(file(ownedId, userId, FileStatus.DELETED)));
+                    .willReturn(Optional.of(file(ownedId, userId, FileStatus.TRASHED)));
 
             assertThat(listFavoritesService.listFavorites(command)).isEmpty();
         }

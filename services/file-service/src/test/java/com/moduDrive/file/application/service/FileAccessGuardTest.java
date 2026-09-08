@@ -166,13 +166,27 @@ class FileAccessGuardTest {
         @Test
         @DisplayName("휴지통에 들어간 하위 파일은 조상 grant가 있어도 접근 거부")
         void deniesATrashedDescendantEvenWithAnInheritedGrant() {
-            // DELETED is checked before any grant lookup: a still-live ancestor share must not
+            // isRemoved() is checked before any grant lookup: a still-live ancestor share must not
             // keep a soft-deleted descendant reachable, so resolveRole is never consulted here.
             File trashed = File.withId(new FileId(fileId), new FileNamespaceId(namespaceId),
                     new FileName("report.pdf"), new FilePath("/shared/sub"), new FileOwnerId(ownerId),
-                    null, null, FileStatus.DELETED, new FileIsDirectory(false));
+                    null, null, FileStatus.TRASHED, new FileIsDirectory(false));
 
             Throwable thrown = catchThrowable(() -> fileAccessGuard.requirePermission(trashed, callerId, Permission.DOWNLOAD));
+
+            assertThat(thrown).isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getExceptionCase())
+                    .isEqualTo(FileExceptionCase.FILE_ACCESS_DENIED);
+        }
+
+        @Test
+        @DisplayName("퍼지된(tombstone) 하위 파일도 조상 grant가 있어도 접근 거부")
+        void deniesAPurgedDescendantEvenWithAnInheritedGrant() {
+            File purged = File.withId(new FileId(fileId), new FileNamespaceId(namespaceId),
+                    new FileName("report.pdf"), new FilePath("/shared/sub"), new FileOwnerId(ownerId),
+                    null, null, FileStatus.DELETED, new FileIsDirectory(false));
+
+            Throwable thrown = catchThrowable(() -> fileAccessGuard.requirePermission(purged, callerId, Permission.DOWNLOAD));
 
             assertThat(thrown).isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getExceptionCase())

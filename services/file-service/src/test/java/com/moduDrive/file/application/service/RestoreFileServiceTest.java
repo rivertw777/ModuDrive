@@ -62,12 +62,12 @@ class RestoreFileServiceTest {
     }
 
     @Nested
-    @DisplayName("파일이 삭제된 상태일 때")
+    @DisplayName("파일이 휴지통에 있을 때 (TRASHED)")
     class WhenFileIsDeleted {
 
         @Test
         void restoresFile() {
-            given(findFilePort.findById(command.getFileId())).willReturn(Optional.of(makeFile(FileStatus.DELETED)));
+            given(findFilePort.findById(command.getFileId())).willReturn(Optional.of(makeFile(FileStatus.TRASHED)));
             given(saveFilePort.saveFile(any())).willAnswer(inv -> inv.getArgument(0));
 
             File result = restoreFileService.restoreFile(command);
@@ -86,7 +86,7 @@ class RestoreFileServiceTest {
         @Test
         void cascadesRestoreToDescendants() {
             given(findFilePort.findById(command.getFileId()))
-                    .willReturn(Optional.of(makeFile(FileStatus.DELETED, new FileIsDirectory(true))));
+                    .willReturn(Optional.of(makeFile(FileStatus.TRASHED, new FileIsDirectory(true))));
             given(saveFilePort.saveFile(any())).willAnswer(inv -> inv.getArgument(0));
 
             restoreFileService.restoreFile(command);
@@ -96,14 +96,12 @@ class RestoreFileServiceTest {
     }
 
     @Nested
-    @DisplayName("파일이 purge된 tombstone일 때")
+    @DisplayName("파일이 purge된 tombstone일 때 (DELETED)")
     class WhenFileIsATombstone {
 
         @Test
         void throwsFileNotFound() {
-            File tombstone = makeFile(FileStatus.DELETED);
-            tombstone.markDeletedAt(java.time.LocalDateTime.now());
-            given(findFilePort.findById(command.getFileId())).willReturn(Optional.of(tombstone));
+            given(findFilePort.findById(command.getFileId())).willReturn(Optional.of(makeFile(FileStatus.DELETED)));
 
             Throwable thrown = catchThrowable(() -> restoreFileService.restoreFile(command));
 

@@ -22,6 +22,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.times;
@@ -36,6 +37,7 @@ class DirectoryCascaderTest {
 
     private final NamespaceId namespaceId = new NamespaceId(UUID.randomUUID());
     private final LocalDateTime trashedAt = LocalDateTime.now();
+    private final UUID deletedBy = UUID.randomUUID();
 
     private File childAt(String path, String name) {
         return childAt(path, name, FileStatus.UPLOADED);
@@ -50,7 +52,7 @@ class DirectoryCascaderTest {
                 new FileName(name), new FilePath(path),
                 new FileOwnerId(UUID.randomUUID()), null, null, status, new FileIsDirectory(false));
         file.markUpdatedAt(trashTime);
-        if (status == FileStatus.DELETED) file.markTrashedAt(trashTime);
+        if (FileStatus.REMOVED.contains(status)) file.markTrashedAt(trashTime);
         return file;
     }
 
@@ -84,19 +86,21 @@ class DirectoryCascaderTest {
     }
 
     @Test
-    @DisplayName("휴지통으로 보낼 때 이미 삭제된 하위 항목은 건드리지 않는다")
-    void softDeleteSkipsAlreadyDeletedDescendant() {
+    @DisplayName("휴지통으로 보낼 때 이미 휴지통에 있거나 퍼지된 하위 항목은 건드리지 않는다")
+    void softDeleteSkipsAlreadyRemovedDescendant() {
         File active = childAt("/A", "b.txt", FileStatus.UPLOADED);
-        File alreadyDeleted = childAt("/A", "c.txt", FileStatus.DELETED);
+        File alreadyTrashed = childAt("/A", "c.txt", FileStatus.TRASHED);
+        File alreadyPurged = childAt("/A", "d.txt", FileStatus.DELETED);
         given(findFilePort.findByNamespaceIdAndPathStartingWith(namespaceId, "/A"))
-                .willReturn(List.of(active, alreadyDeleted));
+                .willReturn(List.of(active, alreadyTrashed, alreadyPurged));
 
         directoryCascader.softDelete(namespaceId, "/A", trashedAt);
 
-        assertThat(active.getStatus()).isEqualTo(FileStatus.DELETED);
+        assertThat(active.getStatus()).isEqualTo(FileStatus.TRASHED);
         assertThat(active.getTrashedAt()).isEqualTo(trashedAt);
         then(saveFilePort).should(times(1)).saveFile(active);
-        then(saveFilePort).should(times(0)).saveFile(alreadyDeleted);
+        then(saveFilePort).should(times(0)).saveFile(alreadyTrashed);
+        then(saveFilePort).should(times(0)).saveFile(alreadyPurged);
     }
 
     @Test
@@ -114,35 +118,38 @@ class DirectoryCascaderTest {
     }
 
     @Test
-    @DisplayName("복원할 때 삭제되지 않은 하위 항목은 건드리지 않는다")
-    void restoreSkipsNonDeletedDescendant() {
-        File deleted = childAt("/A", "b.txt", FileStatus.DELETED);
+    @DisplayName("복원할 때 이미 살아있는 하위 항목은 건드리지 않는다")
+    void restoreSkipsNonTrashedDescendant() {
+        File trashed = childAt("/A", "b.txt", FileStatus.TRASHED);
         File active = childAt("/A", "c.txt", FileStatus.UPLOADED);
         given(findFilePort.findByNamespaceIdAndPathStartingWith(namespaceId, "/A"))
-                .willReturn(List.of(deleted, active));
+                .willReturn(List.of(trashed, active));
 
         directoryCascader.restore(namespaceId, "/A");
 
-        assertThat(deleted.getStatus()).isEqualTo(FileStatus.UPLOADED);
-        then(saveFilePort).should(times(1)).saveFile(deleted);
+        assertThat(trashed.getStatus()).isEqualTo(FileStatus.UPLOADED);
+        then(saveFilePort).should(times(1)).saveFile(trashed);
         then(saveFilePort).should(times(0)).saveFile(active);
     }
 
     @Test
-    @DisplayName("영구 삭제할 때 삭제되지 않은 하위 항목은 지우지 않는다")
-    void purgeSkipsNonDeletedDescendant() {
-        File deleted = childAt("/A", "b.txt", FileStatus.DELETED);
+    @DisplayName("영구 삭제할 때 휴지통에 있지 않은 하위 항목은 지우지 않는다")
+    void purgeSkipsNonTrashedDescendant() {
+        File trashed = childAt("/A", "b.txt", FileStatus.TRASHED);
         File restoredEarly = childAt("/A", "c.txt", FileStatus.UPLOADED);
+        File alreadyPurged = childAt("/A", "d.txt", FileStatus.DELETED);
         given(findFilePort.findByNamespaceIdAndPathStartingWith(namespaceId, "/A"))
-                .willReturn(List.of(deleted, restoredEarly));
+                .willReturn(List.of(trashed, restoredEarly, alreadyPurged));
 
-        directoryCascader.purge(namespaceId, "/A", trashedAt);
+        directoryCascader.purge(namespaceId, "/A", trashedAt, deletedBy);
 
-        then(saveFilePort).should(times(1)).purgeFile(new FileId(deleted.getId()));
-        then(saveFilePort).should(times(0)).purgeFile(new FileId(restoredEarly.getId()));
+        then(saveFilePort).should(times(1)).purgeFile(new FileId(trashed.getId()), deletedBy);
+        then(saveFilePort).should(times(0)).purgeFile(eq(new FileId(restoredEarly.getId())), any());
+        then(saveFilePort).should(times(0)).purgeFile(eq(new FileId(alreadyPurged.getId())), any());
         then(purgeStorageBlocksPort).should(times(1))
-                .purgeBlocks(new FileId(deleted.getId()), deleted.getOwnerId());
+                .purgeBlocks(new FileId(trashed.getId()), trashed.getOwnerId());
         then(purgeStorageBlocksPort).should(times(0)).purgeBlocks(new FileId(restoredEarly.getId()), restoredEarly.getOwnerId());
+        then(purgeStorageBlocksPort).should(times(0)).purgeBlocks(new FileId(alreadyPurged.getId()), alreadyPurged.getOwnerId());
     }
 
     @Test
@@ -150,15 +157,15 @@ class DirectoryCascaderTest {
     void purgeSkipsBlockDeletionForADirectoryDescendant() {
         File deletedDirectory = File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespaceId.value()),
                 new FileName("하위폴더"), new FilePath("/A"),
-                new FileOwnerId(UUID.randomUUID()), null, null, FileStatus.DELETED, new FileIsDirectory(true));
+                new FileOwnerId(UUID.randomUUID()), null, null, FileStatus.TRASHED, new FileIsDirectory(true));
         deletedDirectory.markUpdatedAt(trashedAt);
         deletedDirectory.markTrashedAt(trashedAt);
         given(findFilePort.findByNamespaceIdAndPathStartingWith(namespaceId, "/A"))
                 .willReturn(List.of(deletedDirectory));
 
-        directoryCascader.purge(namespaceId, "/A", trashedAt);
+        directoryCascader.purge(namespaceId, "/A", trashedAt, deletedBy);
 
-        then(saveFilePort).should(times(1)).purgeFile(new FileId(deletedDirectory.getId()));
+        then(saveFilePort).should(times(1)).purgeFile(new FileId(deletedDirectory.getId()), deletedBy);
         then(purgeStorageBlocksPort).shouldHaveNoInteractions();
     }
 
@@ -167,15 +174,15 @@ class DirectoryCascaderTest {
     void purgeSkipsADescendantTrashedLaterAtTheSamePath() {
         // The root being purged was trashed at `trashedAt`. A namesake directory at the same
         // path was created and trashed independently, later — its descendant must survive.
-        File ownDescendant = childAt("/A", "b.txt", FileStatus.DELETED, trashedAt);
-        File unrelatedNamesakeDescendant = childAt("/A", "c.txt", FileStatus.DELETED, trashedAt.plusDays(29));
+        File ownDescendant = childAt("/A", "b.txt", FileStatus.TRASHED, trashedAt);
+        File unrelatedNamesakeDescendant = childAt("/A", "c.txt", FileStatus.TRASHED, trashedAt.plusDays(29));
         given(findFilePort.findByNamespaceIdAndPathStartingWith(namespaceId, "/A"))
                 .willReturn(List.of(ownDescendant, unrelatedNamesakeDescendant));
 
-        directoryCascader.purge(namespaceId, "/A", trashedAt);
+        directoryCascader.purge(namespaceId, "/A", trashedAt, deletedBy);
 
-        then(saveFilePort).should(times(1)).purgeFile(new FileId(ownDescendant.getId()));
-        then(saveFilePort).should(times(0)).purgeFile(new FileId(unrelatedNamesakeDescendant.getId()));
+        then(saveFilePort).should(times(1)).purgeFile(new FileId(ownDescendant.getId()), deletedBy);
+        then(saveFilePort).should(times(0)).purgeFile(eq(new FileId(unrelatedNamesakeDescendant.getId())), any());
         then(purgeStorageBlocksPort).should(times(0))
                 .purgeBlocks(new FileId(unrelatedNamesakeDescendant.getId()), unrelatedNamesakeDescendant.getOwnerId());
     }

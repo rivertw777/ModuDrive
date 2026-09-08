@@ -5,7 +5,6 @@ import com.moduDrive.file.application.port.out.FindFilePort;
 import com.moduDrive.file.application.port.out.FindFileSharePort;
 import com.moduDrive.file.domain.model.File;
 import com.moduDrive.file.domain.model.File.FileId;
-import com.moduDrive.file.domain.model.FileStatus;
 import com.moduDrive.file.domain.model.Namespace.NamespaceId;
 import com.moduDrive.file.domain.model.ShareScope;
 import com.moduDrive.file.exception.FileExceptionCase;
@@ -56,8 +55,8 @@ class PublicFileResolver {
     }
 
     /** Direct children of the directory at {@code fileId} (a link-shared folder, or one nested
-     * under it), DELETED entries excluded. A per-invite guest token cannot reach this — listing a
-     * folder needs the folder itself to be "anyone with the link". */
+     * under it), trashed/purged entries excluded. A per-invite guest token cannot reach this —
+     * listing a folder needs the folder itself to be "anyone with the link". */
     List<File> resolveChildren(String fileId, String key) {
         Unlocked unlocked = unlockRoot(key);
         if (!unlocked.subtree()) {
@@ -70,14 +69,14 @@ class PublicFileResolver {
         return findFilePort
                 .findByNamespaceIdAndPath(new NamespaceId(dir.getNamespaceId()), dir.fullPath())
                 .stream()
-                .filter(f -> f.getStatus() != FileStatus.DELETED)
+                .filter(f -> !f.isRemoved())
                 .toList();
     }
 
     private File target(String fileId) {
         return parseUuid(fileId)
                 .flatMap(id -> findFilePort.findById(new FileId(id)))
-                .filter(file -> file.getStatus() != FileStatus.DELETED)
+                .filter(file -> !file.isRemoved())
                 .orElseThrow(this::notFound);
     }
 
@@ -87,14 +86,14 @@ class PublicFileResolver {
     private Unlocked unlockRoot(String key) {
         UUID capability = parseUuid(key).orElseThrow(this::notFound);
         Optional<File> linkShared = findFilePort.findByLinkToken(capability)
-                .filter(f -> f.getStatus() != FileStatus.DELETED)
+                .filter(f -> !f.isRemoved())
                 .filter(f -> f.getAccessScope() == ShareScope.LINK);
         if (linkShared.isPresent()) {
             return new Unlocked(linkShared.get(), true);
         }
         File guestRoot = findFileSharePort.findByToken(capability)
                 .flatMap(share -> findFilePort.findById(new FileId(share.getFileId())))
-                .filter(f -> f.getStatus() != FileStatus.DELETED)
+                .filter(f -> !f.isRemoved())
                 .orElseThrow(this::notFound);
         return new Unlocked(guestRoot, false);
     }

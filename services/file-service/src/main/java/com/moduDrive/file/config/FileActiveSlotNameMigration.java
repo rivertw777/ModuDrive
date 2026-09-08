@@ -35,7 +35,8 @@ class FileActiveSlotNameMigration implements ApplicationRunner {
     public void run(ApplicationArguments args) {
         try {
             jdbcTemplate.update(
-                    "UPDATE file SET active_slot_name = name WHERE status <> 'DELETED' AND active_slot_name IS NULL");
+                    "UPDATE file SET active_slot_name = name "
+                            + "WHERE status NOT IN ('TRASHED', 'DELETED') AND active_slot_name IS NULL");
             jdbcTemplate.execute("ALTER TABLE file DROP CONSTRAINT IF EXISTS uk_file_namespace_path_name");
         } catch (Exception e) {
             // Best-effort: never block app startup over cleanup of a constraint that may already

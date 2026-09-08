@@ -124,13 +124,13 @@ class FilePersistenceAdapter implements
     }
 
     @Override
-    public void purgeFile(FileId fileId) {
+    public void purgeFile(FileId fileId, UUID deletedBy) {
         // Tombstone purge: drop everything that costs storage, keep the metadata row with
         // deletedAt stamped. markPurged is a plain UPDATE (not a JPA save) so it doesn't bump
         // updatedAt — DirectoryCascader.purge's sibling check relies on trash-time timestamps
         // staying put.
         cascadeDeleteAttachments(fileId);
-        fileRepository.markPurged(fileId.value(), LocalDateTime.now());
+        fileRepository.markPurged(fileId.value(), LocalDateTime.now(), deletedBy);
     }
 
     // The file's versions would otherwise dangle forever, pointing at S3 prefixes that
@@ -158,7 +158,7 @@ class FilePersistenceAdapter implements
     @Override
     public List<File> findByNamespaceIdAndPath(NamespaceId namespaceId, String path) {
         return fileRepository
-                .findByNamespaceIdAndPathAndStatusNot(namespaceId.value(), path, FileStatus.DELETED)
+                .findByNamespaceIdAndPathAndStatusNotIn(namespaceId.value(), path, FileStatus.REMOVED)
                 .stream()
                 .map(fileMapper::mapFileToDomain)
                 .collect(Collectors.toList());
@@ -189,7 +189,7 @@ class FilePersistenceAdapter implements
         return (root, query, cb) -> cb.and(
                 cb.equal(root.get("namespaceId"), namespaceId),
                 cb.equal(root.get("path"), path),
-                cb.notEqual(root.get("status"), FileStatus.DELETED));
+                cb.not(root.get("status").in(FileStatus.REMOVED)));
     }
 
     /** Directories first (regardless of the chosen field), then the field, then the entity id
@@ -208,7 +208,7 @@ class FilePersistenceAdapter implements
     @Override
     public Optional<File> findActiveByNamespaceIdAndPathAndName(NamespaceId namespaceId, String path, String name) {
         return fileRepository
-                .findByNamespaceIdAndPathAndNameAndStatusNot(namespaceId.value(), path, name, FileStatus.DELETED)
+                .findByNamespaceIdAndPathAndNameAndStatusNotIn(namespaceId.value(), path, name, FileStatus.REMOVED)
                 .map(fileMapper::mapFileToDomain);
     }
 
@@ -230,7 +230,7 @@ class FilePersistenceAdapter implements
     @Override
     public List<File> findTrashedNotPurged(NamespaceId namespaceId) {
         return fileRepository
-                .findByNamespaceIdAndStatusAndDeletedAtIsNull(namespaceId.value(), FileStatus.DELETED)
+                .findByNamespaceIdAndStatus(namespaceId.value(), FileStatus.TRASHED)
                 .stream()
                 .map(fileMapper::mapFileToDomain)
                 .collect(Collectors.toList());
@@ -239,7 +239,7 @@ class FilePersistenceAdapter implements
     @Override
     public List<File> findByNamespaceIdAndNameContaining(NamespaceId namespaceId, String query) {
         return fileRepository
-                .findByNamespaceIdAndNameContainingIgnoreCaseAndStatusNot(namespaceId.value(), query, FileStatus.DELETED)
+                .findByNamespaceIdAndNameContainingIgnoreCaseAndStatusNotIn(namespaceId.value(), query, FileStatus.REMOVED)
                 .stream()
                 .map(fileMapper::mapFileToDomain)
                 .collect(Collectors.toList());
@@ -248,7 +248,7 @@ class FilePersistenceAdapter implements
     @Override
     public List<File> findByNamespaceId(NamespaceId namespaceId) {
         return fileRepository
-                .findByNamespaceIdAndDirectoryFalseAndStatusNot(namespaceId.value(), FileStatus.DELETED)
+                .findByNamespaceIdAndDirectoryFalseAndStatusNotIn(namespaceId.value(), FileStatus.REMOVED)
                 .stream()
                 .map(fileMapper::mapFileToDomain)
                 .collect(Collectors.toList());
@@ -262,7 +262,7 @@ class FilePersistenceAdapter implements
     @Override
     public List<File> findExpiredTrash(LocalDateTime cutoff) {
         return fileRepository
-                .findByStatusAndDeletedAtIsNullAndTrashedAtBefore(FileStatus.DELETED, cutoff)
+                .findByStatusAndTrashedAtBefore(FileStatus.TRASHED, cutoff)
                 .stream()
                 .map(fileMapper::mapFileToDomain)
                 .collect(Collectors.toList());

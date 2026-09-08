@@ -1,5 +1,6 @@
 package com.moduDrive.file.adapter.out.persistence;
 
+import com.moduDrive.common.infrastructure.jpa.audit.CreatedAtEntity;
 import com.moduDrive.file.domain.model.Role;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
@@ -7,10 +8,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.UuidGenerator;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Getter
@@ -27,8 +25,7 @@ import java.util.UUID;
         @UniqueConstraint(name = "uk_file_share_token", columnNames = {"token"})
 })
 @Entity
-@EntityListeners(AuditingEntityListener.class)
-class FileShareJpaEntity {
+class FileShareJpaEntity extends CreatedAtEntity {
 
     @Id
     @UuidGenerator(style = UuidGenerator.Style.VERSION_7)
@@ -57,10 +54,6 @@ class FileShareJpaEntity {
     /** Non-null only while a guest share is unclaimed — the invited email. Cleared by
      * {@link #applyClaim}; null for a direct member grant. */
     private String granteeEmail;
-
-    @CreatedDate
-    @Column(updatable = false)
-    private LocalDateTime createdAt;
 
     FileShareJpaEntity(UUID fileId, UUID ownerId, UUID sharedWithUserId, Role grantedRole) {
         this(fileId, ownerId, sharedWithUserId, grantedRole, null, null);

@@ -135,7 +135,7 @@ class GetFileServiceTest {
         @Test
         void throwsFileAlreadyDeleted() {
             given(findFilePort.findById(command.getFileId()))
-                    .willReturn(Optional.of(fileOwnedBy(callerId, FileStatus.DELETED)));
+                    .willReturn(Optional.of(fileOwnedBy(callerId, FileStatus.TRASHED)));
 
             Throwable thrown = catchThrowable(() -> getFileService.getFile(command));
 

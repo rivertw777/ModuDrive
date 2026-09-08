@@ -11,7 +11,6 @@ import com.moduDrive.file.application.port.out.FindMemberByIdPort;
 import com.moduDrive.file.application.port.out.FindMemberByIdPort.MemberSummary;
 import com.moduDrive.file.domain.model.File;
 import com.moduDrive.file.domain.model.FileShare;
-import com.moduDrive.file.domain.model.FileStatus;
 import com.moduDrive.file.domain.model.Permission;
 import com.moduDrive.file.exception.FileExceptionCase;
 import lombok.RequiredArgsConstructor;
@@ -40,7 +39,7 @@ class GetFileService implements GetFileUseCase {
                 .orElseThrow(() -> new BusinessException(FileExceptionCase.FILE_NOT_FOUND));
         fileAccessGuard.requirePermission(file, command.getCallerId(), Permission.READ);
 
-        if (file.getStatus() == FileStatus.DELETED) {
+        if (file.isRemoved()) {
             throw new BusinessException(FileExceptionCase.FILE_ALREADY_DELETED);
         }
 

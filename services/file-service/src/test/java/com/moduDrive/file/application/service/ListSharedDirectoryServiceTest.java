@@ -91,7 +91,7 @@ class ListSharedDirectoryServiceTest {
         @Test
         void returnsNonDeletedChildren() {
             File child = entry("a.txt", "/shared", false, FileStatus.UPLOADED);
-            File trashed = entry("b.txt", "/shared", false, FileStatus.DELETED);
+            File trashed = entry("b.txt", "/shared", false, FileStatus.TRASHED);
             given(findFilePort.findById(command.getDirectoryId())).willReturn(Optional.of(dir()));
             given(findFilePort.findByNamespaceIdAndPath(new NamespaceId(namespaceId), "/shared"))
                     .willReturn(List.of(child, trashed));

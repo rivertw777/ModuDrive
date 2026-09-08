@@ -26,11 +26,13 @@ public class File {
     private UUID linkToken;
     /** Only meaningful while {@code accessScope == LINK}; null otherwise. */
     private Role linkRole;
-    /** When this file was sent to trash; null while it is not in the trash. */
+    /** When this file was sent to trash; null while it is not in the trash. Set alongside
+     * {@code status = TRASHED}, cleared on restore. */
     private LocalDateTime trashedAt;
-    /** When this file was purged from the trash. Non-null makes the row a tombstone — its
-     * blocks/versions/shares/favorites are gone but the metadata row is kept as a deletion
-     * record. Every {@code status != DELETED} read already hides it. */
+    /** When this file was purged from the trash. Set exactly once, alongside the
+     * {@code TRASHED -> DELETED} transition — never un-set. Non-null makes the row a tombstone:
+     * its blocks/versions/shares/favorites are gone but the metadata row is kept as a deletion
+     * record. Every {@link #isRemoved()} read already hides both this and a merely-trashed row. */
     private LocalDateTime deletedAt;
 
     public static File create(FileNamespaceId namespaceId,
@@ -126,17 +128,24 @@ public class File {
         this.fileSize = size;
     }
 
-    /** {@code trashedAt} is passed in, not read from the clock here, so a directory and every
+    /** Sends this file to trash — recoverable via {@link #restore()} until it's purged.
+     * {@code trashedAt} is passed in, not read from the clock here, so a directory and every
      * descendant trashed in the same cascade share one instant — {@code DirectoryCascader.purge}
      * tells a cascade sibling from a later, unrelated file at a reused path by that equality. */
     public void softDelete(LocalDateTime trashedAt) {
-        this.status = FileStatus.DELETED;
+        this.status = FileStatus.TRASHED;
         this.trashedAt = trashedAt;
     }
 
     public void restore() {
         this.status = FileStatus.UPLOADED;
         this.trashedAt = null;
+    }
+
+    /** True once this entry has left the live tree — trashed or purged. Every "show me what's
+     * actually there" read filters this out (see {@link FileStatus#REMOVED}). */
+    public boolean isRemoved() {
+        return FileStatus.REMOVED.contains(status);
     }
 
     public void rename(FileName name) {

@@ -123,7 +123,7 @@ class ListSharedWithMeServiceTest {
             given(findFileSharePort.findBySharedWithUserId(sharedWithUserId))
                     .willReturn(List.of(makeShare(fileId, Role.VIEWER)));
             given(findFilePort.findById(new FileId(fileId)))
-                    .willReturn(Optional.of(makeFile(fileId, FileStatus.DELETED)));
+                    .willReturn(Optional.of(makeFile(fileId, FileStatus.TRASHED)));
 
             assertThat(listSharedWithMeService.listSharedWithMe(command)).isEmpty();
         }

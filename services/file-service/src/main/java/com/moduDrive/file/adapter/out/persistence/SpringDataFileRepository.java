@@ -8,6 +8,7 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
 import java.time.LocalDateTime;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -16,11 +17,11 @@ interface SpringDataFileRepository extends JpaRepository<FileJpaEntity, UUID>, J
 
     Optional<FileJpaEntity> findByLinkToken(UUID linkToken);
 
-    List<FileJpaEntity> findByNamespaceIdAndPathAndStatusNot(
-            UUID namespaceId, String path, FileStatus status);
+    List<FileJpaEntity> findByNamespaceIdAndPathAndStatusNotIn(
+            UUID namespaceId, String path, Collection<FileStatus> statuses);
 
-    Optional<FileJpaEntity> findByNamespaceIdAndPathAndNameAndStatusNot(
-            UUID namespaceId, String path, String name, FileStatus status);
+    Optional<FileJpaEntity> findByNamespaceIdAndPathAndNameAndStatusNotIn(
+            UUID namespaceId, String path, String name, Collection<FileStatus> statuses);
 
     // Named to avoid Spring Data's "StartingWith" derived-query keyword — losing the @Query here
     // would silently fall back to an unescaped `like 'prefix%'` and reintroduce the prefix-collision
@@ -34,30 +35,34 @@ interface SpringDataFileRepository extends JpaRepository<FileJpaEntity, UUID>, J
             @Param("prefix") String prefix,
             @Param("escapedPrefix") String escapedPrefix);
 
-    // Trash view: trashed but not yet purged (a tombstone stays status=DELETED with deleted_at set).
-    List<FileJpaEntity> findByNamespaceIdAndStatusAndDeletedAtIsNull(UUID namespaceId, FileStatus status);
+    // Trash view: status alone is enough now — TRASHED never has deletedAt set (purge is the only
+    // thing that sets it, and purge moves status to DELETED in the same update).
+    List<FileJpaEntity> findByNamespaceIdAndStatus(UUID namespaceId, FileStatus status);
 
-    // Retention sweep: in-trash long enough, not already purged.
-    List<FileJpaEntity> findByStatusAndDeletedAtIsNullAndTrashedAtBefore(FileStatus status, LocalDateTime cutoff);
+    // Retention sweep: in-trash long enough. Same "TRASHED never has deletedAt" invariant as above.
+    List<FileJpaEntity> findByStatusAndTrashedAtBefore(FileStatus status, LocalDateTime cutoff);
 
     // Tombstone stamp — BaseTimeEntity's deletedAt/isDeleted, but via a plain UPDATE so no
     // @LastModifiedDate bump (see FilePersistenceAdapter.purgeFile). flush first so the
     // version/share/favorite deletes in the same purgeFile call are committed; clear after so a
-    // stale managed FileJpaEntity isn't read back with the old value.
+    // stale managed FileJpaEntity isn't read back with the old value. The WHERE clause is the
+    // purge precondition (only a currently-trashed row is purge-eligible) and doubles as the
+    // idempotency guard — a second concurrent call no longer matches once the first commits.
     @Modifying(flushAutomatically = true, clearAutomatically = true)
-    @Query("update FileJpaEntity f set f.deletedAt = :now, f.isDeleted = true "
-            + "where f.id = :id and f.deletedAt is null and f.status = 'DELETED'")
-    void markPurged(@Param("id") UUID id, @Param("now") LocalDateTime now);
+    @Query("update FileJpaEntity f set f.deletedAt = :now, f.isDeleted = true, f.status = 'DELETED', "
+            + "f.deletedBy = :deletedBy where f.id = :id and f.status = 'TRASHED'")
+    void markPurged(@Param("id") UUID id, @Param("now") LocalDateTime now, @Param("deletedBy") UUID deletedBy);
 
-    List<FileJpaEntity> findByNamespaceIdAndNameContainingIgnoreCaseAndStatusNot(
-            UUID namespaceId, String name, FileStatus status);
+    List<FileJpaEntity> findByNamespaceIdAndNameContainingIgnoreCaseAndStatusNotIn(
+            UUID namespaceId, String name, Collection<FileStatus> statuses);
 
-    List<FileJpaEntity> findByNamespaceIdAndDirectoryFalseAndStatusNot(
-            UUID namespaceId, FileStatus status);
+    List<FileJpaEntity> findByNamespaceIdAndDirectoryFalseAndStatusNotIn(
+            UUID namespaceId, Collection<FileStatus> statuses);
 
-    // Trashed (DELETED) files still occupy storage until purged, so they count here too — but a
-    // purged tombstone (deleted_at set) no longer has blocks. PENDING (upload not finished, no
-    // committed size) is excluded too.
+    // Trashed files still occupy storage until purged, so they count here too — but a purged
+    // tombstone (deleted_at set) no longer has blocks. This is independent of the TRASHED/DELETED
+    // status split above: deletedAt alone already tells "still has blocks" apart from "purged".
+    // PENDING (upload not finished, no committed size) is excluded too.
     @Query("select coalesce(sum(f.fileSize), 0) from FileJpaEntity f " +
             "where f.namespaceId = :namespaceId and f.directory = false " +
             "and f.status <> 'PENDING' and f.deletedAt is null")

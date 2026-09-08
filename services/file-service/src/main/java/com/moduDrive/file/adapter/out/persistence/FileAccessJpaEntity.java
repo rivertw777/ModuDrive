@@ -1,5 +1,6 @@
 package com.moduDrive.file.adapter.out.persistence;
 
+import com.moduDrive.common.infrastructure.jpa.audit.CreatedAtEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
@@ -17,7 +18,7 @@ import java.util.UUID;
         @UniqueConstraint(name = "uk_file_access_user_file", columnNames = {"user_id", "file_id"})
 })
 @Entity
-class FileAccessJpaEntity {
+class FileAccessJpaEntity extends CreatedAtEntity {
 
     @Id
     @UuidGenerator(style = UuidGenerator.Style.VERSION_7)

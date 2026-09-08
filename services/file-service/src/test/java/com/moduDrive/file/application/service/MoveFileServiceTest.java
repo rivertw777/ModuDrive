@@ -134,7 +134,7 @@ class MoveFileServiceTest {
 
         @Test
         void throwsFileAlreadyDeleted() {
-            given(findFilePort.findById(command.getFileId())).willReturn(Optional.of(makeFile(FileStatus.DELETED)));
+            given(findFilePort.findById(command.getFileId())).willReturn(Optional.of(makeFile(FileStatus.TRASHED)));
 
             Throwable thrown = catchThrowable(() -> moveFileService.moveFile(command));
 

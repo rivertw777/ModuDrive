@@ -28,11 +28,12 @@ class FilePurgerTest {
     @InjectMocks private FilePurger filePurger;
 
     private final UUID ownerId = UUID.randomUUID();
+    private final UUID callerId = UUID.randomUUID();
 
     private File makeFile(FileIsDirectory isDirectory) {
         return File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(UUID.randomUUID()),
                 new FileName("report.pdf"), new FilePath("/1"),
-                new FileOwnerId(ownerId), null, null, FileStatus.DELETED, isDirectory);
+                new FileOwnerId(ownerId), null, null, FileStatus.TRASHED, isDirectory);
     }
 
     @Nested
@@ -43,11 +44,11 @@ class FilePurgerTest {
         void purgesItsBlocksThenTombstonesTheRow() {
             File file = makeFile(new FileIsDirectory(false));
 
-            filePurger.purgeRoot(file);
+            filePurger.purgeRoot(file, callerId);
 
             then(purgeStorageBlocksPort).should().purgeBlocks(new FileId(file.getId()), ownerId);
             then(directoryCascader).shouldHaveNoInteractions();
-            then(saveFilePort).should().purgeFile(new FileId(file.getId()));
+            then(saveFilePort).should().purgeFile(new FileId(file.getId()), callerId);
         }
     }
 
@@ -59,11 +60,11 @@ class FilePurgerTest {
         void cascadesPurgeInsteadOfPurgingItsOwnBlocks() {
             File directory = makeFile(new FileIsDirectory(true));
 
-            filePurger.purgeRoot(directory);
+            filePurger.purgeRoot(directory, callerId);
 
-            then(directoryCascader).should().purge(any(), eq(directory.fullPath()), any());
+            then(directoryCascader).should().purge(any(), eq(directory.fullPath()), any(), eq(callerId));
             then(purgeStorageBlocksPort).shouldHaveNoInteractions();
-            then(saveFilePort).should().purgeFile(new FileId(directory.getId()));
+            then(saveFilePort).should().purgeFile(new FileId(directory.getId()), callerId);
         }
     }
 }

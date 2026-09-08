@@ -54,13 +54,13 @@ class EmptyTrashServiceTest {
         void purgesOnlyTheRoots() {
             File file = File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespace.getId()),
                     new FileName("report.pdf"), new FilePath("/1"),
-                    new FileOwnerId(userId), null, null, FileStatus.DELETED, new FileIsDirectory(false));
+                    new FileOwnerId(userId), null, null, FileStatus.TRASHED, new FileIsDirectory(false));
             File directory = File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespace.getId()),
                     new FileName("폴더"), new FilePath("/1"),
-                    new FileOwnerId(userId), null, null, FileStatus.DELETED, new FileIsDirectory(true));
+                    new FileOwnerId(userId), null, null, FileStatus.TRASHED, new FileIsDirectory(true));
             File nestedFile = File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespace.getId()),
                     new FileName("b.txt"), new FilePath("/1/폴더"),
-                    new FileOwnerId(userId), null, null, FileStatus.DELETED, new FileIsDirectory(false));
+                    new FileOwnerId(userId), null, null, FileStatus.TRASHED, new FileIsDirectory(false));
 
             given(findNamespacePort.findByUserId(any())).willReturn(Optional.of(namespace));
             given(findFilePort.findTrashedNotPurged(any()))
@@ -68,11 +68,11 @@ class EmptyTrashServiceTest {
 
             emptyTrashService.emptyTrash(command);
 
-            then(filePurger).should().purgeRoot(file);
-            then(filePurger).should().purgeRoot(directory);
+            then(filePurger).should().purgeRoot(file, userId);
+            then(filePurger).should().purgeRoot(directory, userId);
             // nestedFile is under the purged directory, not a root — DirectoryCascader.purge
             // (inside FilePurger) handles it, EmptyTrashService never touches it directly.
-            then(filePurger).should(Mockito.never()).purgeRoot(nestedFile);
+            then(filePurger).should(Mockito.never()).purgeRoot(eq(nestedFile), any());
         }
     }
 
@@ -84,19 +84,19 @@ class EmptyTrashServiceTest {
         void stillPurgesTheRemainingRoots() {
             File failing = File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespace.getId()),
                     new FileName("broken.pdf"), new FilePath("/1"),
-                    new FileOwnerId(userId), null, null, FileStatus.DELETED, new FileIsDirectory(false));
+                    new FileOwnerId(userId), null, null, FileStatus.TRASHED, new FileIsDirectory(false));
             File ok = File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespace.getId()),
                     new FileName("fine.pdf"), new FilePath("/1"),
-                    new FileOwnerId(userId), null, null, FileStatus.DELETED, new FileIsDirectory(false));
+                    new FileOwnerId(userId), null, null, FileStatus.TRASHED, new FileIsDirectory(false));
 
             given(findNamespacePort.findByUserId(any())).willReturn(Optional.of(namespace));
             given(findFilePort.findTrashedNotPurged(any()))
                     .willReturn(List.of(failing, ok));
-            willThrow(new RuntimeException("storage-service unreachable")).given(filePurger).purgeRoot(failing);
+            willThrow(new RuntimeException("storage-service unreachable")).given(filePurger).purgeRoot(failing, userId);
 
             emptyTrashService.emptyTrash(command);
 
-            then(filePurger).should().purgeRoot(ok);
+            then(filePurger).should().purgeRoot(ok, userId);
         }
     }
 
