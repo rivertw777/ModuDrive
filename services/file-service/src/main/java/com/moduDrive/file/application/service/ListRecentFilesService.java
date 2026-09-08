@@ -10,7 +10,6 @@ import com.moduDrive.file.application.port.out.FindFilePort;
 import com.moduDrive.file.application.port.out.FindNamespacePort;
 import com.moduDrive.file.domain.model.File;
 import com.moduDrive.file.domain.model.File.FileId;
-import com.moduDrive.file.domain.model.FileStatus;
 import com.moduDrive.file.domain.model.Namespace;
 import com.moduDrive.file.domain.model.Namespace.NamespaceUserId;
 import lombok.RequiredArgsConstructor;
@@ -53,7 +52,7 @@ class ListRecentFilesService implements ListRecentFilesUseCase {
                 .flatMap(access -> findFilePort.findById(new FileId(access.getFileId()))
                         .map(file -> new Accessed(file, access.getAccessedAt()))
                         .stream())
-                .filter(accessed -> accessed.file().getStatus() != FileStatus.DELETED)
+                .filter(accessed -> !accessed.file().isRemoved())
                 // Folders never belong in "recent" — the write side (GetFileController) already
                 // skips them, this also hides any row recorded before that skip existed.
                 .filter(accessed -> !accessed.file().isDirectory())

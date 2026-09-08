@@ -19,22 +19,22 @@ public interface FindFilePort {
 
     List<File> findByNamespaceIdAndPath(NamespaceId namespaceId, String path);
 
-    /** One keyset-scrolled page of a directory's direct children (DELETED excluded), ordered
-     * directories-first then by {@code sort}. {@code cursor} is a token from a previous page's
-     * {@link DirectoryPage#nextCursor()}, or null for the first page. */
+    /** One keyset-scrolled page of a directory's direct children (TRASHED/DELETED excluded),
+     * ordered directories-first then by {@code sort}. {@code cursor} is a token from a previous
+     * page's {@link DirectoryPage#nextCursor()}, or null for the first page. */
     DirectoryPage findDirectoryPage(NamespaceId namespaceId, String path, DirectorySort sort, String cursor, int limit);
 
-    /** The active (non-deleted) row at this namespace/path/name, if any — the one an upload of
-     * the same name would collide with. A trashed file at that name doesn't occupy the slot (see
-     * {@code uk_file_namespace_path_active_name}), so it's deliberately excluded here. */
+    /** The active (not trashed, not purged) row at this namespace/path/name, if any — the one an
+     * upload of the same name would collide with. A trashed file at that name doesn't occupy the
+     * slot (see {@code uk_file_namespace_path_active_name}), so it's deliberately excluded here. */
     Optional<File> findActiveByNamespaceIdAndPathAndName(NamespaceId namespaceId, String path, String name);
 
     /** Entries whose {@code path} is {@code pathPrefix} or nested under it — i.e. every
      * descendant of the directory whose full path is {@code pathPrefix}. */
     List<File> findByNamespaceIdAndPathStartingWith(NamespaceId namespaceId, String pathPrefix);
 
-    /** The trash view: files sent to trash and not yet purged. A purged tombstone
-     * ({@code deletedAt} set) is excluded — its contents are already gone. */
+    /** The trash view: status TRASHED. A purged tombstone (status DELETED) is excluded — its
+     * contents are already gone. */
     List<File> findTrashedNotPurged(NamespaceId namespaceId);
 
     List<File> findByNamespaceIdAndNameContaining(NamespaceId namespaceId, String query);

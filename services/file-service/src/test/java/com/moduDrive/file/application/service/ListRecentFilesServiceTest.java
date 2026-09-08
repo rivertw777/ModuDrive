@@ -96,7 +96,7 @@ class ListRecentFilesServiceTest {
             given(findFilePort.findById(new FileId(activeFileId)))
                     .willReturn(Optional.of(makeFile(activeFileId, ownNamespaceId, FileStatus.UPLOADED)));
             given(findFilePort.findById(new FileId(deletedFileId)))
-                    .willReturn(Optional.of(makeFile(deletedFileId, ownNamespaceId, FileStatus.DELETED)));
+                    .willReturn(Optional.of(makeFile(deletedFileId, ownNamespaceId, FileStatus.TRASHED)));
 
             List<FileView> result = listRecentFilesService.listRecentFiles(command);
 

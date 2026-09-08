@@ -148,7 +148,7 @@ class PublicFileResolverTest {
 
         @Test
         void throwsFileNotFoundWhenTheTargetIsTrashed() {
-            File f = file("report.pdf", "/1", false, FileStatus.DELETED);
+            File f = file("report.pdf", "/1", false, FileStatus.TRASHED);
             f.enableLinkSharing(key, Role.VIEWER);
             given(findFilePort.findByLinkToken(key)).willReturn(Optional.of(f));
             given(findFileSharePort.findByToken(key)).willReturn(Optional.empty());
@@ -159,7 +159,7 @@ class PublicFileResolverTest {
         @Test
         @DisplayName("자손은 살아있어도 링크 공유된 루트 폴더가 휴지통이면 거부")
         void throwsWhenTheLinkSharedRootFolderIsTrashed() {
-            File folder = file("shared", "/", true, FileStatus.DELETED);
+            File folder = file("shared", "/", true, FileStatus.TRASHED);
             folder.enableLinkSharing(key, Role.VIEWER);
             given(findFilePort.findByLinkToken(key)).willReturn(Optional.of(folder));
             given(findFileSharePort.findByToken(key)).willReturn(Optional.empty());
@@ -173,7 +173,7 @@ class PublicFileResolverTest {
         @Test
         @DisplayName("파일은 살아있어도 게스트 공유된 루트가 휴지통이면 거부")
         void throwsWhenTheGuestSharedRootIsTrashed() {
-            File f = file("report.pdf", "/1", false, FileStatus.DELETED);
+            File f = file("report.pdf", "/1", false, FileStatus.TRASHED);
             given(findFilePort.findByLinkToken(key)).willReturn(Optional.empty());
             given(findFileSharePort.findByToken(key)).willReturn(Optional.of(guestShareOn(f)));
             given(findFilePort.findById(new FileId(f.getId()))).willReturn(Optional.of(f));
@@ -262,7 +262,7 @@ class PublicFileResolverTest {
             givenFound(folder);
             given(findFilePort.findByLinkToken(key)).willReturn(Optional.of(folder));
             File child = file("a.txt", "/shared", false, FileStatus.UPLOADED);
-            File trashed = file("b.txt", "/shared", false, FileStatus.DELETED);
+            File trashed = file("b.txt", "/shared", false, FileStatus.TRASHED);
             given(findFilePort.findByNamespaceIdAndPath(any(), eq("/shared"))).willReturn(List.of(child, trashed));
 
             assertThat(publicFileResolver.resolveChildren(folder.getId().toString(), key.toString()))

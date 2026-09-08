@@ -57,7 +57,7 @@ class ListTrashServiceTest {
         void returnsDeletedFileList() {
             File file = File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespace.getId()),
                     new FileName("report.pdf"), new FilePath("/1/docs"),
-                    new FileOwnerId(UUID.randomUUID()), null, null, FileStatus.DELETED, new FileIsDirectory(false));
+                    new FileOwnerId(UUID.randomUUID()), null, null, FileStatus.TRASHED, new FileIsDirectory(false));
 
             given(findNamespacePort.findByUserId(any())).willReturn(Optional.of(namespace));
             given(findFilePort.findTrashedNotPurged(any())).willReturn(List.of(file));
@@ -65,19 +65,19 @@ class ListTrashServiceTest {
             List<File> result = listTrashService.listTrash(command);
 
             assertThat(result).hasSize(1);
-            assertThat(result.get(0).getStatus()).isEqualTo(FileStatus.DELETED);
+            assertThat(result.get(0).getStatus()).isEqualTo(FileStatus.TRASHED);
         }
 
         @Test
         void hidesDescendantsOfADeletedDirectory() {
             // "폴더" (deleted, at /1) and "b.txt" nested inside it (deleted, path "/1/폴더") were
-            // both cascaded to DELETED when the folder was trashed — only the folder is a trash root.
+            // both cascaded to TRASHED when the folder was trashed — only the folder is a trash root.
             File directory = File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespace.getId()),
                     new FileName("폴더"), new FilePath("/1"),
-                    new FileOwnerId(UUID.randomUUID()), null, null, FileStatus.DELETED, new FileIsDirectory(true));
+                    new FileOwnerId(UUID.randomUUID()), null, null, FileStatus.TRASHED, new FileIsDirectory(true));
             File nestedFile = File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespace.getId()),
                     new FileName("b.txt"), new FilePath("/1/폴더"),
-                    new FileOwnerId(UUID.randomUUID()), null, null, FileStatus.DELETED, new FileIsDirectory(false));
+                    new FileOwnerId(UUID.randomUUID()), null, null, FileStatus.TRASHED, new FileIsDirectory(false));
 
             given(findNamespacePort.findByUserId(any())).willReturn(Optional.of(namespace));
             given(findFilePort.findTrashedNotPurged(any())).willReturn(List.of(directory, nestedFile));

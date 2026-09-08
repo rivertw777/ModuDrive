@@ -44,7 +44,7 @@ class GetAllFileVersionsServiceTest {
 
     private final File file = File.withId(new FileId(fileId), new FileNamespaceId(UUID.randomUUID()),
             new FileName("report.pdf"), new FilePath("/1"), new FileOwnerId(ownerId),
-            null, null, FileStatus.DELETED, new FileIsDirectory(false));
+            null, null, FileStatus.TRASHED, new FileIsDirectory(false));
 
     @Nested
     @DisplayName("호출자가 파일 소유자일 때")

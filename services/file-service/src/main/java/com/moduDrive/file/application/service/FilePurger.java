@@ -33,9 +33,9 @@ class FilePurger {
     private final PurgeStorageBlocksPort purgeStorageBlocksPort;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
-    void purgeRoot(File root) {
+    void purgeRoot(File root, UUID deletedBy) {
         if (root.isDirectory()) {
-            directoryCascader.purge(new NamespaceId(root.getNamespaceId()), root.fullPath(), root.getTrashedAt());
+            directoryCascader.purge(new NamespaceId(root.getNamespaceId()), root.fullPath(), root.getTrashedAt(), deletedBy);
         } else {
             FileId fileId = new FileId(root.getId());
             UUID ownerId = root.getOwnerId();
@@ -44,6 +44,6 @@ class FilePurger {
             // same transaction would roll the row back while its blocks stay gone.
             AfterCommit.run(() -> purgeStorageBlocksPort.purgeBlocks(fileId, ownerId));
         }
-        saveFilePort.purgeFile(new FileId(root.getId()));
+        saveFilePort.purgeFile(new FileId(root.getId()), deletedBy);
     }
 }

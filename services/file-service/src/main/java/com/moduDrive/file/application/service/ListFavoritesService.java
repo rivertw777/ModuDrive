@@ -10,7 +10,6 @@ import com.moduDrive.file.application.port.out.FindFilePort;
 import com.moduDrive.file.application.port.out.FindNamespacePort;
 import com.moduDrive.file.domain.model.File;
 import com.moduDrive.file.domain.model.File.FileId;
-import com.moduDrive.file.domain.model.FileStatus;
 import com.moduDrive.file.domain.model.Role;
 import com.moduDrive.file.exception.FileExceptionCase;
 import lombok.RequiredArgsConstructor;
@@ -53,7 +52,7 @@ class ListFavoritesService implements ListFavoritesUseCase {
                 .flatMap(entry -> findFilePort.findById(new FileId(entry.fileId()))
                         .map(file -> new Starred(file, entry.favoritedAt()))
                         .stream())
-                .filter(starred -> starred.file().getStatus() != FileStatus.DELETED)
+                .filter(starred -> !starred.file().isRemoved())
                 .map(starred -> {
                     File file = starred.file();
                     file.markFavorite(true);

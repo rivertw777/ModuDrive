@@ -11,7 +11,6 @@ import com.moduDrive.file.application.port.out.FindMemberByIdPort;
 import com.moduDrive.file.application.port.out.FindMemberByIdPort.MemberSummary;
 import com.moduDrive.file.domain.model.File;
 import com.moduDrive.file.domain.model.File.FileId;
-import com.moduDrive.file.domain.model.FileStatus;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -45,7 +44,7 @@ class ListSharedWithMeService implements ListSharedWithMeUseCase {
         return findFileSharePort.findBySharedWithUserId(command.getSharedWithUserId())
                 .stream()
                 .flatMap(share -> findFilePort.findById(new FileId(share.getFileId()))
-                        .filter(file -> file.getStatus() != FileStatus.DELETED)
+                        .filter(file -> !file.isRemoved())
                         .map(file -> {
                             // The caller never owns a shared-with-me file, so their star is
                             // always the per-user one.

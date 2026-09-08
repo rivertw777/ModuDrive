@@ -32,7 +32,8 @@ class FileActiveSlotNameMigrationTest {
             migration.run(null);
 
             then(jdbcTemplate).should().update(
-                    "UPDATE file SET active_slot_name = name WHERE status <> 'DELETED' AND active_slot_name IS NULL");
+                    "UPDATE file SET active_slot_name = name "
+                            + "WHERE status NOT IN ('TRASHED', 'DELETED') AND active_slot_name IS NULL");
             then(jdbcTemplate).should().execute(
                     "ALTER TABLE file DROP CONSTRAINT IF EXISTS uk_file_namespace_path_name");
         }

@@ -7,7 +7,6 @@ import com.moduDrive.file.application.port.in.usecase.MoveFileUseCase;
 import com.moduDrive.file.application.port.out.FindFilePort;
 import com.moduDrive.file.application.port.out.SaveFilePort;
 import com.moduDrive.file.domain.model.File;
-import com.moduDrive.file.domain.model.FileStatus;
 import com.moduDrive.file.domain.model.Namespace.NamespaceId;
 import com.moduDrive.file.exception.FileExceptionCase;
 import lombok.RequiredArgsConstructor;
@@ -30,7 +29,7 @@ class MoveFileService implements MoveFileUseCase {
                 .orElseThrow(() -> new BusinessException(FileExceptionCase.FILE_NOT_FOUND));
         fileAccessGuard.requireOwner(file, command.getCallerId());
 
-        if (file.getStatus() == FileStatus.DELETED) {
+        if (file.isRemoved()) {
             throw new BusinessException(FileExceptionCase.FILE_ALREADY_DELETED);
         }
 

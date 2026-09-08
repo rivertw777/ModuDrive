@@ -1,8 +1,8 @@
 package com.moduDrive.notification.adapter.out.persistence;
 
+import com.moduDrive.common.infrastructure.jpa.audit.CreatedAtEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
-import jakarta.persistence.EntityListeners;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
@@ -11,8 +11,6 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.UuidGenerator;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
 import java.time.LocalDateTime;
 import java.util.UUID;
@@ -27,8 +25,7 @@ import java.util.UUID;
         @UniqueConstraint(name = "uk_notification_event_id", columnNames = "event_id")
 })
 @Entity
-@EntityListeners(AuditingEntityListener.class)
-class NotificationJpaEntity {
+class NotificationJpaEntity extends CreatedAtEntity {
 
     @Id
     @UuidGenerator(style = UuidGenerator.Style.VERSION_7)
@@ -58,10 +55,6 @@ class NotificationJpaEntity {
 
     /** Null while unread. */
     private LocalDateTime readAt;
-
-    @CreatedDate
-    @Column(updatable = false)
-    private LocalDateTime createdAt;
 
     NotificationJpaEntity(UUID eventId, UUID recipientId, UUID fileId, String fileName, String role,
                           boolean directory, String sharerName, String sharerEmail) {

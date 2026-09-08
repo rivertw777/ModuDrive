@@ -66,7 +66,7 @@ class DeleteFileServiceTest {
 
             org.mockito.ArgumentCaptor<File> saved = org.mockito.ArgumentCaptor.forClass(File.class);
             then(saveFilePort).should().saveFile(saved.capture());
-            assertThat(saved.getValue().getStatus()).isEqualTo(FileStatus.DELETED);
+            assertThat(saved.getValue().getStatus()).isEqualTo(FileStatus.TRASHED);
             assertThat(saved.getValue().getTrashedAt()).isNotNull();
             then(directoryCascader).shouldHaveNoInteractions();
         }
@@ -113,11 +113,25 @@ class DeleteFileServiceTest {
     }
 
     @Nested
-    @DisplayName("파일이 이미 삭제된 상태일 때")
+    @DisplayName("파일이 이미 휴지통에 있거나 퍼지된 상태일 때")
     class WhenFileAlreadyDeleted {
 
         @Test
-        void throwsFileAlreadyDeleted() {
+        @DisplayName("이미 휴지통에 있으면 (TRASHED) 다시 휴지통으로 보낼 수 없다")
+        void throwsFileAlreadyDeletedWhenTrashed() {
+            given(findFilePort.findById(command.getFileId())).willReturn(Optional.of(makeFile(FileStatus.TRASHED)));
+
+            Throwable thrown = catchThrowable(() -> deleteFileService.deleteFile(command));
+
+            assertThat(thrown).isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getExceptionCase())
+                    .isEqualTo(FileExceptionCase.FILE_ALREADY_DELETED);
+            then(saveFilePort).shouldHaveNoInteractions();
+        }
+
+        @Test
+        @DisplayName("이미 퍼지됐으면 (DELETED) 다시 휴지통으로 보낼 수 없다")
+        void throwsFileAlreadyDeletedWhenPurged() {
             given(findFilePort.findById(command.getFileId())).willReturn(Optional.of(makeFile(FileStatus.DELETED)));
 
             Throwable thrown = catchThrowable(() -> deleteFileService.deleteFile(command));

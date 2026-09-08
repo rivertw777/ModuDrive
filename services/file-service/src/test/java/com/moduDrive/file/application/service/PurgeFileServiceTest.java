@@ -52,17 +52,17 @@ class PurgeFileServiceTest {
     }
 
     @Nested
-    @DisplayName("파일이 삭제된 상태일 때")
+    @DisplayName("파일이 휴지통에 있을 때 (TRASHED)")
     class WhenFileIsDeleted {
 
         @Test
         void purgesFile() {
-            File file = makeFile(FileStatus.DELETED);
+            File file = makeFile(FileStatus.TRASHED);
             given(findFilePort.findById(command.getFileId())).willReturn(Optional.of(file));
 
             purgeFileService.purgeFile(command);
 
-            then(filePurger).should().purgeRoot(file);
+            then(filePurger).should().purgeRoot(file, callerId);
         }
     }
 
@@ -84,12 +84,26 @@ class PurgeFileServiceTest {
     }
 
     @Nested
-    @DisplayName("파일이 삭제된 상태가 아닐 때")
+    @DisplayName("파일이 휴지통에 있는 상태가 아닐 때")
     class WhenFileNotDeleted {
 
         @Test
-        void throwsFileNotDeleted() {
+        @DisplayName("한 번도 휴지통에 간 적 없으면 (UPLOADED)")
+        void throwsFileNotDeletedWhenLive() {
             given(findFilePort.findById(command.getFileId())).willReturn(Optional.of(makeFile(FileStatus.UPLOADED)));
+
+            Throwable thrown = catchThrowable(() -> purgeFileService.purgeFile(command));
+
+            assertThat(thrown).isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getExceptionCase())
+                    .isEqualTo(FileExceptionCase.FILE_NOT_DELETED);
+            then(filePurger).shouldHaveNoInteractions();
+        }
+
+        @Test
+        @DisplayName("이미 퍼지됐으면 (DELETED) 다시 퍼지할 수 없다")
+        void throwsFileNotDeletedWhenAlreadyPurged() {
+            given(findFilePort.findById(command.getFileId())).willReturn(Optional.of(makeFile(FileStatus.DELETED)));
 
             Throwable thrown = catchThrowable(() -> purgeFileService.purgeFile(command));
 

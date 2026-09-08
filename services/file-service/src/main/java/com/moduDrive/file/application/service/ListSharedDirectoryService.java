@@ -13,7 +13,6 @@ import com.moduDrive.file.application.port.out.FindMemberByIdPort.MemberSummary;
 import com.moduDrive.file.domain.model.File;
 import com.moduDrive.file.domain.model.File.FileId;
 import com.moduDrive.file.domain.model.FileShare;
-import com.moduDrive.file.domain.model.FileStatus;
 import com.moduDrive.file.domain.model.Namespace.NamespaceId;
 import com.moduDrive.file.domain.model.Permission;
 import com.moduDrive.file.domain.model.Role;
@@ -65,7 +64,7 @@ class ListSharedDirectoryService implements ListSharedDirectoryUseCase {
         return findFilePort
                 .findByNamespaceIdAndPath(new NamespaceId(directory.getNamespaceId()), directory.fullPath())
                 .stream()
-                .filter(child -> child.getStatus() != FileStatus.DELETED)
+                .filter(child -> !child.isRemoved())
                 .map(child -> {
                     if (child.getOwnerId().equals(callerId)) {
                         return FileView.owned(child);

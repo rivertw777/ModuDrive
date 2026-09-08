@@ -117,8 +117,18 @@ class FilePersistenceAdapterTest {
         }
 
         @Test
-        @DisplayName("휴지통(DELETED)에 있는 동일 이름 파일은 충돌로 잡히지 않는다")
-        void doesNotFindADeletedFileAtTheSameSlot() {
+        @DisplayName("휴지통(TRASHED)에 있는 동일 이름 파일은 충돌로 잡히지 않는다")
+        void doesNotFindATrashedFileAtTheSameSlot() {
+            save("/1/docs", "report.pdf", FileStatus.TRASHED);
+
+            var result = filePersistenceAdapter.findActiveByNamespaceIdAndPathAndName(namespaceId, "/1/docs", "report.pdf");
+
+            assertThat(result).isEmpty();
+        }
+
+        @Test
+        @DisplayName("퍼지된(DELETED) 동일 이름 파일도 충돌로 잡히지 않는다")
+        void doesNotFindAPurgedFileAtTheSameSlot() {
             save("/1/docs", "report.pdf", FileStatus.DELETED);
 
             var result = filePersistenceAdapter.findActiveByNamespaceIdAndPathAndName(namespaceId, "/1/docs", "report.pdf");
@@ -145,7 +155,19 @@ class FilePersistenceAdapterTest {
 
         @Test
         @DisplayName("휴지통에 같은 자리의 파일이 있어도 새 활성 파일 저장은 유니크 제약에 걸리지 않는다")
-        void doesNotCollideWithADeletedFileAtTheSameSlot() {
+        void doesNotCollideWithATrashedFileAtTheSameSlot() {
+            save("/1/docs", "report.pdf", FileStatus.TRASHED);
+
+            File saved = filePersistenceAdapter.saveFile(File.create(
+                    new FileNamespaceId(namespaceIdValue), new FileName("report.pdf"),
+                    new FilePath("/1/docs"), new FileOwnerId(UUID.randomUUID()), new FileIsDirectory(false)));
+
+            assertThat(saved.getId()).isNotNull();
+        }
+
+        @Test
+        @DisplayName("퍼지된 파일이 같은 자리에 있어도 새 활성 파일 저장은 유니크 제약에 걸리지 않는다")
+        void doesNotCollideWithAPurgedFileAtTheSameSlot() {
             save("/1/docs", "report.pdf", FileStatus.DELETED);
 
             File saved = filePersistenceAdapter.saveFile(File.create(
@@ -411,17 +433,19 @@ class FilePersistenceAdapterTest {
         @DisplayName("purge는 파일 행을 tombstone(deleted_at)으로 남기고 버전/공유/즐겨찾기만 지운다")
         void purgeKeepsTheRowAsATombstoneAndClearsAttachments() {
             UUID fileIdValue = springDataFileRepository.save(new FileJpaEntity(
-                    namespaceIdValue, "report.pdf", "/1", UUID.randomUUID(), FileStatus.DELETED, false)).getId();
+                    namespaceIdValue, "report.pdf", "/1", UUID.randomUUID(), FileStatus.TRASHED, false)).getId();
             springDataFileVersionRepository.save(new FileVersionJpaEntity(fileIdValue, 10L, 1, "s3://b/v1"));
             springDataFileShareRepository.save(
                     new FileShareJpaEntity(fileIdValue, UUID.randomUUID(), UUID.randomUUID(), Role.VIEWER));
             springDataFileFavoriteRepository.save(new FileFavoriteJpaEntity(UUID.randomUUID(), fileIdValue));
+            UUID deletedBy = UUID.randomUUID();
 
-            filePersistenceAdapter.purgeFile(new FileId(fileIdValue));
+            filePersistenceAdapter.purgeFile(new FileId(fileIdValue), deletedBy);
             entityManager.clear();
 
             FileJpaEntity tombstone = springDataFileRepository.findById(fileIdValue).orElseThrow();
             assertThat(tombstone.getDeletedAt()).isNotNull();
+            assertThat(tombstone.getDeletedBy()).isEqualTo(deletedBy);
             assertThat(tombstone.getStatus()).isEqualTo(FileStatus.DELETED);
             assertThat(springDataFileVersionRepository.findByFileIdOrderByCreatedAtDesc(
                     fileIdValue, org.springframework.data.domain.PageRequest.of(0, 10))).isEmpty();
@@ -566,10 +590,11 @@ class FilePersistenceAdapterTest {
         }
 
         @Test
-        @DisplayName("DELETED 항목과 다른 경로/네임스페이스의 항목은 제외된다")
-        void excludesDeletedAndOutOfScopeEntries() {
+        @DisplayName("TRASHED/DELETED 항목과 다른 경로/네임스페이스의 항목은 제외된다")
+        void excludesRemovedAndOutOfScopeEntries() {
             saveEntry("/1", "keep.txt", false, FileStatus.UPLOADED);
-            saveEntry("/1", "trashed.txt", false, FileStatus.DELETED);
+            saveEntry("/1", "trashed.txt", false, FileStatus.TRASHED);
+            saveEntry("/1", "purged.txt", false, FileStatus.DELETED);
             saveEntry("/1/sub", "elsewhere.txt", false, FileStatus.UPLOADED);
             springDataFileRepository.save(new FileJpaEntity(
                     UUID.randomUUID(), "other-ns.txt", "/1", UUID.randomUUID(), FileStatus.UPLOADED, false));

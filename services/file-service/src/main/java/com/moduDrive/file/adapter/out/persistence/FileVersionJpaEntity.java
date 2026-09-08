@@ -1,15 +1,13 @@
 package com.moduDrive.file.adapter.out.persistence;
 
+import com.moduDrive.common.infrastructure.jpa.audit.CreatedAtEntity;
 import jakarta.persistence.*;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import org.hibernate.annotations.UuidGenerator;
-import org.springframework.data.annotation.CreatedDate;
-import org.springframework.data.jpa.domain.support.AuditingEntityListener;
 
-import java.time.LocalDateTime;
 import java.util.UUID;
 
 @Getter
@@ -17,8 +15,7 @@ import java.util.UUID;
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 @Table(name = "file_version")
 @Entity
-@EntityListeners(AuditingEntityListener.class)
-class FileVersionJpaEntity {
+class FileVersionJpaEntity extends CreatedAtEntity {
 
     @Id
     @UuidGenerator(style = UuidGenerator.Style.VERSION_7)
@@ -33,10 +30,6 @@ class FileVersionJpaEntity {
 
     @Column(nullable = false)
     private String s3Path;
-
-    @CreatedDate
-    @Column(updatable = false)
-    private LocalDateTime createdAt;
 
     FileVersionJpaEntity(UUID fileId, Long fileSize, int blockCount, String s3Path) {
         this.fileId = fileId;
