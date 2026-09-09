@@ -18,10 +18,11 @@ import com.moduDrive.auth.domain.model.TokenPair.TokenJti;
 import com.moduDrive.common.core.exception.BusinessException;
 import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
+import io.jsonwebtoken.security.SignatureException;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 
-import java.security.Key;
+import javax.crypto.SecretKey;
 import java.util.Arrays;
 import java.util.Base64;
 import java.util.Date;
@@ -31,7 +32,7 @@ import java.util.UUID;
 @Component
 class TokenManager implements GenerateTokenPort, ValidateTokenPort {
 
-    private final Key secretKey;
+    private final SecretKey secretKey;
     private final long accessTokenExpiration;
     private final long refreshTokenExpiration;
 
@@ -85,28 +86,28 @@ class TokenManager implements GenerateTokenPort, ValidateTokenPort {
     private String createAccessToken(String memberId, List<String> memberRoles, Date issuedAt,
                                      String familyId, String jti) {
         return Jwts.builder()
-                .setSubject(memberId)
-                .setId(jti)
+                .subject(memberId)
+                .id(jti)
                 .claim("roles", String.join(",", memberRoles))
                 .claim("type", TYPE_ACCESS)
                 .claim(CLAIM_FAMILY_ID, familyId)
-                .setIssuedAt(issuedAt)
-                .setExpiration(new Date(issuedAt.getTime() + accessTokenExpiration))
-                .signWith(this.secretKey, SignatureAlgorithm.HS256)
+                .issuedAt(issuedAt)
+                .expiration(new Date(issuedAt.getTime() + accessTokenExpiration))
+                .signWith(this.secretKey, Jwts.SIG.HS256)
                 .compact();
     }
 
     private String createRefreshToken(String memberId, List<String> memberRoles, Date issuedAt,
                                       String familyId, String jti) {
         return Jwts.builder()
-                .setSubject(memberId)
-                .setId(jti)
+                .subject(memberId)
+                .id(jti)
                 .claim("roles", String.join(",", memberRoles))
                 .claim("type", TYPE_REFRESH)
                 .claim(CLAIM_FAMILY_ID, familyId)
-                .setIssuedAt(issuedAt)
-                .setExpiration(new Date(issuedAt.getTime() + refreshTokenExpiration))
-                .signWith(this.secretKey, SignatureAlgorithm.HS256)
+                .issuedAt(issuedAt)
+                .expiration(new Date(issuedAt.getTime() + refreshTokenExpiration))
+                .signWith(this.secretKey, Jwts.SIG.HS256)
                 .compact();
     }
 
@@ -154,11 +155,11 @@ class TokenManager implements GenerateTokenPort, ValidateTokenPort {
 
     private Claims parseClaims(String token) {
         try {
-            return Jwts.parserBuilder()
-                    .setSigningKey(this.secretKey)
+            return Jwts.parser()
+                    .verifyWith(this.secretKey)
                     .build()
-                    .parseClaimsJws(token)
-                    .getBody();
+                    .parseSignedClaims(token)
+                    .getPayload();
         } catch (ExpiredJwtException e) {
             throw new BusinessException(AuthExceptionCase.TOKEN_EXPIRED);
         } catch (MalformedJwtException | UnsupportedJwtException | SignatureException e) {
