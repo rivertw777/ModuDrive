@@ -12,16 +12,13 @@ import com.moduDrive.file.application.port.out.FindMemberByIdPort.MemberSummary;
 import com.moduDrive.file.domain.model.File;
 import com.moduDrive.file.domain.model.FileShare;
 import com.moduDrive.file.domain.model.Namespace.NamespaceId;
-import com.moduDrive.file.domain.model.Role;
 import com.moduDrive.file.domain.model.ShareScope;
 import com.moduDrive.file.exception.FileExceptionCase;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
 import java.util.function.Function;
@@ -57,28 +54,28 @@ class ListFileSharesService implements ListFileSharesUseCase {
         // access when the ancestor grant still lets them in (see RevokeInheritedDialog on the
         // web side, which needs this row to warn about and cascade that removal); the web layer
         // is the one that hides the redundant row when both exist, not this service.
+        //
+        // One row per (ancestor, grantee) pair — deliberately NOT collapsed to a single "nearest"
+        // or "most generous" winner per grantee. Two independent ancestors (say a grandparent and
+        // a parent directory) can each separately share the same person; a full revoke needs to
+        // clear every one of those grants, not just whichever one would win a display tie-break —
+        // otherwise the grant this service didn't mention keeps letting them in. (Attribution for
+        // a *viewer's* "공유한 사용자" listing is a separate concern, resolved by
+        // FileAccessGuard.resolveGrant, which does pick a single nearest/most-generous grant —
+        // that's unaffected by this.)
         List<File> inheritedLinkSources = new ArrayList<>();
-        // One row per inherited grantee. Ancestors arrive root-most first; keep the most generous
-        // role (that's the effective access FileAccessGuard resolves) and, on a tie, the nearest
-        // ancestor — matching Drive's "상속됨: <가장 가까운 폴더>".
-        Map<UUID, InheritedShare> inheritedByGrantee = new LinkedHashMap<>();
+        List<InheritedShare> inheritedShares = new ArrayList<>();
         for (File ancestor : fileAccessGuard.ancestorDirectories(file)) {
             if (ancestor.getAccessScope() == ShareScope.LINK) {
                 inheritedLinkSources.add(ancestor);
             }
             for (FileShare ancestorShare : findFileSharePort.findByFileId(new File.FileId(ancestor.getId()))) {
-                UUID grantee = ancestorShare.getSharedWithUserId();
-                if (grantee == null) {
+                if (ancestorShare.getSharedWithUserId() == null) {
                     continue;
                 }
-                inheritedByGrantee.merge(grantee, new InheritedShare(ancestorShare, ancestor), (existing, candidate) -> {
-                    Role kept = existing.share().getRole();
-                    Role incoming = candidate.share().getRole();
-                    return kept == Role.EDITOR && incoming != Role.EDITOR ? existing : candidate;
-                });
+                inheritedShares.add(new InheritedShare(ancestorShare, ancestor));
             }
         }
-        List<InheritedShare> inheritedShares = new ArrayList<>(inheritedByGrantee.values());
 
         // Enrichment is member-service display data, not the file/share data itself — a lookup
         // failure (member deleted, member-service briefly down) must degrade that one row to
