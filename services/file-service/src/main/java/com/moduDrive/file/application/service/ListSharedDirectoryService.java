@@ -56,7 +56,11 @@ class ListSharedDirectoryService implements ListSharedDirectoryUseCase {
         // Children of a shared folder inherit the caller's role *and* the "공유한 사용자"/"공유된
         // 날짜" attribution from that folder's own grant — 공유 문서함 shows the same columns whether
         // you're at the root or three folders deep, so resolve both once here rather than per row.
-        Role inheritedRole = fileAccessGuard.effectiveRole(directory, callerId);
+        // inheritableRole, not effectiveRole: from a child's point of view `directory` is just one
+        // more ancestor, so a grant on it must still fold with (not short-circuit over) whatever a
+        // grandparent above it grants — the "direct grant wins outright" rule only applies at the
+        // level of the file actually being accessed, i.e. each child below, not this directory.
+        Role inheritedRole = fileAccessGuard.inheritableRole(directory, callerId);
         Optional<FileShare> grant = fileAccessGuard.resolveGrant(directory, callerId);
         MemberSummary sharedBy = lookupMember(directory.getOwnerId());
         LocalDateTime sharedAt = grant.map(FileShare::getCreatedAt).orElse(null);
@@ -72,13 +76,14 @@ class ListSharedDirectoryService implements ListSharedDirectoryUseCase {
                     child.markFavorite(favoriteIds.contains(child.getId()));
                     // A child can also hold its own direct share to the caller (see
                     // ShareFileService) alongside this folder's inherited one — unfiltered, so it
-                    // shows here too. Role is the more generous of the two grants (matches
-                    // FileAccessGuard, the single authority on effective role — a weaker direct
-                    // grant must not mask a stronger inherited one); the date is the direct
-                    // grant's own, since that's the row the caller was actually notified about.
+                    // shows here too. The direct grant, if any, wins outright (matches
+                    // FileAccessGuard.resolveRole — a grant on the exact file is a deliberate,
+                    // file-specific decision by the owner and is never overridden by an inherited
+                    // one, more generous or not); the date is the direct grant's own, since that's
+                    // the row the caller was actually notified about.
                     Optional<FileShare> direct =
                             findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(child.getId()), callerId);
-                    Role role = fileAccessGuard.moreGenerous(direct.map(FileShare::getRole).orElse(null), inheritedRole);
+                    Role role = direct.map(FileShare::getRole).orElse(inheritedRole);
                     LocalDateTime sharedOn = direct.map(FileShare::getCreatedAt).orElse(sharedAt);
                     return new FileView(child, role, sharedBy.name(), sharedBy.email(), sharedOn, null, null);
                 })
