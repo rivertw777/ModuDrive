@@ -16,6 +16,7 @@ import com.moduDrive.file.domain.model.FileShare.FileShareOwnerId;
 import com.moduDrive.file.domain.model.FileShare.FileShareRole;
 import com.moduDrive.file.domain.model.FileShare.FileShareSharedWithUserId;
 import com.moduDrive.file.domain.model.FileStatus;
+import com.moduDrive.file.domain.model.Namespace.NamespaceId;
 import com.moduDrive.file.domain.model.Role;
 import com.moduDrive.file.domain.model.ShareScope;
 import com.moduDrive.file.exception.FileExceptionCase;
@@ -38,6 +39,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
+import static org.mockito.Mockito.never;
 
 @ExtendWith(MockitoExtension.class)
 class UpdateFileScopeServiceTest {
@@ -148,6 +150,86 @@ class UpdateFileScopeServiceTest {
             then(saveFileSharePort).shouldHaveNoMoreInteractions();
             assertThat(claimedShare.getToken()).isNull();
             assertThat(memberShare.getToken()).isNull(); // was already null; untouched
+        }
+    }
+
+    @Nested
+    @DisplayName("LINK 디렉토리를 RESTRICTED로 되돌릴 때")
+    class WhenRestrictingALinkedDirectory {
+
+        private final UUID namespaceId = UUID.randomUUID();
+
+        private File makeLinkedDirectory() {
+            File directory = File.withId(new FileId(fileId), new FileNamespaceId(namespaceId),
+                    new FileName("a"), new FilePath("/"), new FileOwnerId(ownerId),
+                    null, null, FileStatus.UPLOADED, new FileIsDirectory(true));
+            directory.enableLinkSharing(UUID.randomUUID(), Role.VIEWER);
+            return directory;
+        }
+
+        private File makeDescendant(String name) {
+            return File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespaceId),
+                    new FileName(name), new FilePath("/a"), new FileOwnerId(ownerId),
+                    null, null, FileStatus.UPLOADED, new FileIsDirectory(false));
+        }
+
+        @Test
+        void turnsOffADescendantsOwnIndependentLinkToo() {
+            File directory = makeLinkedDirectory();
+            // b: shared with its own separate LINK, not merely inherited from `a`.
+            File descendantWithOwnLink = makeDescendant("b");
+            descendantWithOwnLink.enableLinkSharing(UUID.randomUUID(), Role.VIEWER);
+            // c: never had its own scope — already RESTRICTED, only ever reachable via `a`.
+            File alreadyRestrictedDescendant = makeDescendant("c");
+
+            given(findFilePort.findById(new FileId(fileId))).willReturn(Optional.of(directory));
+            given(findFileSharePort.findByFileId(any(File.FileId.class))).willReturn(List.of());
+            given(findFilePort.findByNamespaceIdAndPathStartingWith(
+                    new NamespaceId(namespaceId), directory.fullPath()))
+                    .willReturn(List.of(descendantWithOwnLink, alreadyRestrictedDescendant));
+            given(saveFilePort.saveFile(any(File.class))).willAnswer(inv -> inv.getArgument(0));
+
+            updateFileScopeService.updateFileScope(command(ShareScope.RESTRICTED));
+
+            assertThat(descendantWithOwnLink.getAccessScope()).isEqualTo(ShareScope.RESTRICTED);
+            assertThat(descendantWithOwnLink.getLinkToken()).isNull();
+            then(saveFilePort).should().saveFile(descendantWithOwnLink);
+            // Never had a scope of its own to clear — restricting `a` already cuts off its only
+            // (inherited) access path; nothing here needs to write to it.
+            then(saveFilePort).should(never()).saveFile(alreadyRestrictedDescendant);
+        }
+
+        @Test
+        void doesNotSweepWhenTheDirectoryWasAlreadyRestricted() {
+            // A no-op RESTRICTED->RESTRICTED request must not touch descendants — sweeping here
+            // would permanently kill their own independent link tokens for a request that changed
+            // nothing about this directory.
+            File directory = File.withId(new FileId(fileId), new FileNamespaceId(namespaceId),
+                    new FileName("a"), new FilePath("/"), new FileOwnerId(ownerId),
+                    null, null, FileStatus.UPLOADED, new FileIsDirectory(true));
+            given(findFilePort.findById(new FileId(fileId))).willReturn(Optional.of(directory));
+            given(findFileSharePort.findByFileId(new FileId(fileId))).willReturn(List.of());
+            given(saveFilePort.saveFile(any(File.class))).willAnswer(inv -> inv.getArgument(0));
+
+            updateFileScopeService.updateFileScope(command(ShareScope.RESTRICTED));
+
+            then(findFilePort).should(never())
+                    .findByNamespaceIdAndPathStartingWith(any(NamespaceId.class), any(String.class));
+        }
+
+        @Test
+        void leavesDescendantsAloneWhenRestrictingAPlainFile() {
+            // makeFile() is a leaf file, not a directory — no subtree to sweep.
+            File linkedFile = makeFile();
+            linkedFile.enableLinkSharing(UUID.randomUUID(), Role.VIEWER);
+            given(findFilePort.findById(new FileId(fileId))).willReturn(Optional.of(linkedFile));
+            given(findFileSharePort.findByFileId(new FileId(fileId))).willReturn(List.of());
+            given(saveFilePort.saveFile(any(File.class))).willAnswer(inv -> inv.getArgument(0));
+
+            updateFileScopeService.updateFileScope(command(ShareScope.RESTRICTED));
+
+            then(findFilePort).should(never())
+                    .findByNamespaceIdAndPathStartingWith(any(NamespaceId.class), any(String.class));
         }
     }
 

@@ -12,6 +12,7 @@ import com.moduDrive.file.application.port.out.SaveFileSharePort;
 import com.moduDrive.file.domain.model.File;
 import com.moduDrive.file.domain.model.FileShare;
 import com.moduDrive.file.domain.model.FileShare.FileShareId;
+import com.moduDrive.file.domain.model.Namespace.NamespaceId;
 import com.moduDrive.file.domain.model.Role;
 import com.moduDrive.file.domain.model.ShareScope;
 import com.moduDrive.file.exception.FileExceptionCase;
@@ -48,13 +49,40 @@ class UpdateFileScopeService implements UpdateFileScopeUseCase {
             // silently break links already shared.
             file.enableLinkSharing(UUID.randomUUID(), command.getRole());
         } else {
+            // Capture before mutating: an already-RESTRICTED directory re-sent RESTRICTED is a
+            // no-op for the directory itself, but without this check the sweep below would still
+            // fire and permanently kill every descendant's own independent link token (new UUID
+            // on re-enable) for a request that changed nothing.
+            boolean wasLinkShared = file.getAccessScope() == ShareScope.LINK;
             file.disableLinkSharing();
             // Turning sharing off must kill every outstanding anonymous capability, not just the
             // file's own link token — otherwise a guest invite mailed earlier keeps working forever.
             revokeGuestCapabilities(command.getFileId());
+            // Inheritance is a live computation over ancestor scope (FileAccessGuard), not a
+            // stored flag, so restricting this directory alone already cuts off every descendant
+            // that was only ever reachable *through* it. But a descendant can also hold its own,
+            // independent LINK scope (shared directly, not merely inherited) — that one keeps
+            // working off its own token regardless of what this directory does, unless swept here
+            // too. Restricting a folder must mean "nothing under it is link-public anymore", not
+            // "unless some file underneath opted in on its own" — sweep the whole subtree.
+            if (file.isDirectory() && wasLinkShared) {
+                restrictLinkedDescendants(file);
+            }
         }
 
         return saveFilePort.saveFile(file);
+    }
+
+    private void restrictLinkedDescendants(File directory) {
+        NamespaceId namespaceId = new NamespaceId(directory.getNamespaceId());
+        for (File descendant : findFilePort.findByNamespaceIdAndPathStartingWith(namespaceId, directory.fullPath())) {
+            if (descendant.getAccessScope() != ShareScope.LINK) {
+                continue;
+            }
+            descendant.disableLinkSharing();
+            revokeGuestCapabilities(new File.FileId(descendant.getId()));
+            saveFilePort.saveFile(descendant);
+        }
     }
 
     private void revokeGuestCapabilities(File.FileId fileId) {

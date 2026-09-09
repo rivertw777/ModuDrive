@@ -20,7 +20,11 @@ public record FileAccessListResponse(
         /** See {@link FileSharesView#hasSharedDescendant()}. */
         boolean hasSharedDescendant
 ) {
-    public record InheritedLinkResponse(UUID fileId, String name, Role role) {}
+    /** {@code linkToken} is the ancestor's own capability, not this file's — the client builds
+     * this file's public link as {@code /public/{thisFileId}?key={linkToken}} (see
+     * PublicFileResolver.unlocks: any entry nested under the token's root resolves), since this
+     * file has no linkToken of its own while merely inheriting LINK access. */
+    public record InheritedLinkResponse(UUID fileId, String name, Role role, UUID linkToken) {}
 
     public static FileAccessListResponse from(FileSharesView view) {
         List<FileShareResponse> shares = new ArrayList<>();
@@ -44,7 +48,8 @@ public record FileAccessListResponse(
         }
 
         List<InheritedLinkResponse> inheritedLinks = view.inheritedLinkSources().stream()
-                .map(source -> new InheritedLinkResponse(source.getId(), source.getName(), source.getLinkRole()))
+                .map(source -> new InheritedLinkResponse(
+                        source.getId(), source.getName(), source.getLinkRole(), source.getLinkToken()))
                 .toList();
 
         return new FileAccessListResponse(

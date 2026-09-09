@@ -28,6 +28,7 @@ import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.catchThrowable;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -159,8 +160,8 @@ class ListFileSharesServiceTest {
         }
 
         @Test
-        @DisplayName("조상 둘이 같은 멤버에게 다른 role을 주면 가장 관대한 role의 행 하나만 (가까운 조상 출처)")
-        void collapsesToTheMostGenerousRoleWhenTwoAncestorsGrantTheSameMember() {
+        @DisplayName("조상 둘이 같은 멤버에게 각자 공유했으면 둘 다 반환 (하나로 합치지 않음 — 완전히 revoke하려면 둘 다 지워야 함)")
+        void doesNotCollapseTwoIndependentAncestorGrantsOnTheSameMember() {
             UUID nearId = UUID.randomUUID();
             File nearDir = File.withId(new FileId(nearId), new FileNamespaceId(file.getNamespaceId()),
                     new FileName("sub"), new FilePath("/shared-folder"), new FileOwnerId(ownerId),
@@ -179,9 +180,10 @@ class ListFileSharesServiceTest {
 
             FileSharesView result = listFileSharesService.listFileShares(command);
 
-            assertThat(result.inheritedShares()).hasSize(1);
-            assertThat(result.inheritedShares().get(0).share().getRole()).isEqualTo(Role.EDITOR);
-            assertThat(result.inheritedShares().get(0).source()).isEqualTo(nearDir);
+            assertThat(result.inheritedShares()).hasSize(2);
+            assertThat(result.inheritedShares())
+                    .extracting(s -> s.source().getId(), s -> s.share().getRole())
+                    .containsExactlyInAnyOrder(tuple(parentId, Role.VIEWER), tuple(nearId, Role.EDITOR));
         }
 
         @Test
