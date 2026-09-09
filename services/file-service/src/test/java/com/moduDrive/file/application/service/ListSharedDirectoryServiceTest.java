@@ -52,19 +52,10 @@ class ListSharedDirectoryServiceTest {
     @BeforeEach
     void defaults() {
         lenient().when(fileFavoritePort.favoriteFileIds(any())).thenReturn(Set.of());
-        lenient().when(fileAccessGuard.effectiveRole(any(), any())).thenReturn(null);
+        lenient().when(fileAccessGuard.inheritableRole(any(), any())).thenReturn(null);
         lenient().when(fileAccessGuard.resolveGrant(any(), any())).thenReturn(Optional.empty());
         lenient().when(findMemberByIdPort.findMemberById(any())).thenReturn(new MemberSummary("홍길동", "owner@modudrive.com"));
         lenient().when(findFileSharePort.findByFileIdAndSharedWithUserId(any(), any())).thenReturn(Optional.empty());
-        // Real moreGenerous semantics (EDITOR ⊃ VIEWER) so tests exercise the same precedence
-        // ListSharedDirectoryService relies on, without depending on a real FileAccessGuard.
-        lenient().when(fileAccessGuard.moreGenerous(any(), any())).thenAnswer(invocation -> {
-            Role a = invocation.getArgument(0);
-            Role b = invocation.getArgument(1);
-            if (a == Role.EDITOR || b == Role.EDITOR) return Role.EDITOR;
-            if (a == Role.VIEWER || b == Role.VIEWER) return Role.VIEWER;
-            return null;
-        });
     }
 
     private final UUID dirId = UUID.randomUUID();
@@ -114,7 +105,7 @@ class ListSharedDirectoryServiceTest {
             given(findFilePort.findByNamespaceIdAndPath(new NamespaceId(namespaceId), "/shared"))
                     .willReturn(List.of(child));
             given(fileAccessGuard.resolveGrant(any(), eq(callerId))).willReturn(Optional.of(grant));
-            given(fileAccessGuard.effectiveRole(any(), eq(callerId))).willReturn(Role.VIEWER);
+            given(fileAccessGuard.inheritableRole(any(), eq(callerId))).willReturn(Role.VIEWER);
 
             List<FileView> result = listSharedDirectoryService.listSharedDirectory(command);
 
@@ -138,7 +129,7 @@ class ListSharedDirectoryServiceTest {
             given(findFilePort.findById(command.getDirectoryId())).willReturn(Optional.of(dir()));
             given(findFilePort.findByNamespaceIdAndPath(new NamespaceId(namespaceId), "/shared"))
                     .willReturn(List.of(plainChild, individuallySharedChild));
-            given(fileAccessGuard.effectiveRole(any(), eq(callerId))).willReturn(Role.VIEWER);
+            given(fileAccessGuard.inheritableRole(any(), eq(callerId))).willReturn(Role.VIEWER);
             given(findFileSharePort.findByFileIdAndSharedWithUserId(
                     new FileId(individuallySharedChild.getId()), callerId)).willReturn(Optional.of(directGrant));
 
@@ -155,8 +146,8 @@ class ListSharedDirectoryServiceTest {
         }
 
         @Test
-        @DisplayName("직접 공유 권한이 상속 권한보다 약하면, 더 관대한 상속 권한이 이긴다 (날짜는 직접 공유 것)")
-        void aWeakerDirectGrantDoesNotDowngradeAStrongerInheritedRole() {
+        @DisplayName("직접 공유 권한이 상속 권한보다 약해도, 직접 공유가 그대로 이긴다 (FileAccessGuard.resolveRole과 동일 규칙)")
+        void aDirectGrantWinsOutrightEvenWhenWeakerThanTheInheritedRole() {
             File individuallySharedChild = entry("a.txt", "/shared", false, FileStatus.UPLOADED);
             LocalDateTime directSharedAt = LocalDateTime.of(2026, 9, 8, 9, 0);
             FileShare directGrant = FileShare.withId(new FileShare.FileShareId(UUID.randomUUID()),
@@ -167,14 +158,14 @@ class ListSharedDirectoryServiceTest {
             given(findFilePort.findById(command.getDirectoryId())).willReturn(Optional.of(dir()));
             given(findFilePort.findByNamespaceIdAndPath(new NamespaceId(namespaceId), "/shared"))
                     .willReturn(List.of(individuallySharedChild));
-            given(fileAccessGuard.effectiveRole(any(), eq(callerId))).willReturn(Role.EDITOR);
+            given(fileAccessGuard.inheritableRole(any(), eq(callerId))).willReturn(Role.EDITOR);
             given(findFileSharePort.findByFileIdAndSharedWithUserId(
                     new FileId(individuallySharedChild.getId()), callerId)).willReturn(Optional.of(directGrant));
 
             List<FileView> result = listSharedDirectoryService.listSharedDirectory(command);
 
             assertThat(result).hasSize(1);
-            assertThat(result.get(0).callerRole()).isEqualTo(Role.EDITOR);
+            assertThat(result.get(0).callerRole()).isEqualTo(Role.VIEWER);
             assertThat(result.get(0).sharedAt()).isEqualTo(directSharedAt);
         }
     }

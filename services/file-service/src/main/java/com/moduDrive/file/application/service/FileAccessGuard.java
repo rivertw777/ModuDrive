@@ -34,13 +34,31 @@ class FileAccessGuard {
     private final FindFileSharePort findFileSharePort;
     private final FindFilePort findFilePort;
 
-    /** The caller's effective role on this file — their own grant or the most generous one
-     * inherited from a directory above it. Null when they own it or have no grant at all. */
+    /** The caller's effective role on this file — their own grant on this exact file if they have
+     * one (an ancestor's is never consulted then, however more generous it is), otherwise the most
+     * generous grant inherited from a directory above it. Null when they own it or have no grant
+     * at all. */
     Role effectiveRole(File file, UUID callerId) {
         if (isOwner(file, callerId)) {
             return null;
         }
         return resolveRole(file, callerId);
+    }
+
+    /** What a descendant of {@code directory} inherits by virtue of directory access alone — the
+     * most generous grant across {@code directory} and everything above it. Unlike
+     * {@link #effectiveRole}/{@code resolveRole}, there is no "direct grant wins outright"
+     * short-circuit here: from a descendant's point of view {@code directory} is just one more
+     * ancestor, not "its own file" — a grant on {@code directory} itself doesn't get to outrank a
+     * grandparent's more generous one just because it's nearer. (A descendant's *own* direct
+     * grant, if it has one, is layered on top by the caller — see
+     * {@code ListSharedDirectoryService} — the same way {@code resolveRole} layers a file's own
+     * grant over its ancestors.) Null when the caller has no grant on {@code directory} or above. */
+    Role inheritableRole(File directory, UUID callerId) {
+        if (callerId == null) {
+            return null;
+        }
+        return moreGenerous(grantedRole(directory.getId(), callerId), foldAncestors(directory, callerId));
     }
 
     void requireOwner(File file, UUID callerId) {
@@ -78,7 +96,21 @@ class FileAccessGuard {
         if (callerId == null) {
             return null;
         }
-        Role best = grantedRole(file.getId(), callerId);
+        // A grant on this exact file is authoritative and skips ancestors entirely — it's a
+        // deliberate, file-specific decision by the owner, so it overrides an inherited grant
+        // even when the inherited one would be more generous (same priority as resolveGrant
+        // below, which likewise returns the file's own share row before considering any
+        // ancestor's). Only when there's no direct grant do ancestors get folded together,
+        // most-generous-wins, since none of those is more "this file's own" than another.
+        Role own = grantedRole(file.getId(), callerId);
+        if (own != null) {
+            return own;
+        }
+        return foldAncestors(file, callerId);
+    }
+
+    private Role foldAncestors(File file, UUID callerId) {
+        Role best = null;
         for (File ancestor : ancestorDirectories(file)) {
             best = moreGenerous(best, grantedRole(ancestor.getId(), callerId));
         }
@@ -142,7 +174,7 @@ class FileAccessGuard {
 
     /** {@link Role} is a closed enum, not a permission set, so "combine two grants" is just
      * "take the one that grants more" — EDITOR ⊃ VIEWER. */
-    Role moreGenerous(Role a, Role b) {
+    private Role moreGenerous(Role a, Role b) {
         if (a == Role.EDITOR || b == Role.EDITOR) {
             return Role.EDITOR;
         }

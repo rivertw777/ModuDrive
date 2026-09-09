@@ -28,6 +28,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.lenient;
 
 @ExtendWith(MockitoExtension.class)
 class FileAccessGuardTest {
@@ -129,14 +131,42 @@ class FileAccessGuardTest {
         }
 
         @Test
-        void takesTheMostGenerousRoleAcrossDirectAndInheritedGrants() {
-            ancestorsExist();
+        @DisplayName("파일 자신에 직접 grant가 있으면, 조상이 더 관대해도 직접 grant가 이긴다")
+        void aDirectGrantOverridesAMoreGenerousInheritedOne() {
+            // lenient(): these ancestor stubs must never actually be consulted — the direct grant
+            // short-circuits before ancestorDirectories() is even called. A more generous ancestor
+            // (EDITOR) is wired in specifically so this test would fail on the old
+            // moreGenerous(direct, ancestors) behavior (which would have let RENAME through).
+            lenient().when(findFilePort.findActiveByNamespaceIdAndPathAndName(new NamespaceId(namespaceId), "/", "shared"))
+                    .thenReturn(Optional.of(directory(sharedDirId, "/", "shared")));
+            lenient().when(findFilePort.findActiveByNamespaceIdAndPathAndName(new NamespaceId(namespaceId), "/shared", "sub"))
+                    .thenReturn(Optional.of(directory(subDirId, "/shared", "sub")));
+            lenient().when(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(sharedDirId), callerId))
+                    .thenReturn(Optional.of(grant(sharedDirId, callerId, Role.EDITOR)));
             given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(fileId), callerId))
                     .willReturn(Optional.of(grant(fileId, callerId, Role.VIEWER)));
+
+            assertThatCode(() -> fileAccessGuard.requirePermission(f, callerId, Permission.READ))
+                    .doesNotThrowAnyException();
+            Throwable thrown = catchThrowable(() -> fileAccessGuard.requirePermission(f, callerId, Permission.RENAME));
+            assertThat(thrown).isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getExceptionCase())
+                    .isEqualTo(FileExceptionCase.FILE_ACCESS_DENIED);
+            // Pins the short-circuit itself, not just its outcome: ancestors are never walked once
+            // a direct grant is found.
+            then(findFilePort).shouldHaveNoInteractions();
+        }
+
+        @Test
+        @DisplayName("직접 grant가 없으면 여러 조상 중 가장 관대한 role이 적용된다")
+        void takesTheMostGenerousRoleAcrossMultipleAncestorsWhenThereIsNoDirectGrant() {
+            ancestorsExist();
+            given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(fileId), callerId))
+                    .willReturn(Optional.empty());
             given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(sharedDirId), callerId))
                     .willReturn(Optional.of(grant(sharedDirId, callerId, Role.EDITOR)));
             given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(subDirId), callerId))
-                    .willReturn(Optional.empty());
+                    .willReturn(Optional.of(grant(subDirId, callerId, Role.VIEWER)));
 
             assertThatCode(() -> fileAccessGuard.requirePermission(f, callerId, Permission.RENAME))
                     .doesNotThrowAnyException();
@@ -208,6 +238,52 @@ class FileAccessGuardTest {
             assertThat(thrown).isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getExceptionCase())
                     .isEqualTo(FileExceptionCase.FILE_ACCESS_DENIED);
+        }
+    }
+
+    @Nested
+    @DisplayName("inheritableRole 은 (공유 폴더 자식 목록이 물려받을 role)")
+    class InheritableRole {
+
+        private final UUID grandparentId = UUID.randomUUID();
+        private final UUID directoryId = UUID.randomUUID();
+        // /grandparent/directory — directory 자신도 grant를 가질 수 있고, 그 위 grandparent도
+        // 별도로 가질 수 있다. directory의 자식 입장에선 둘 다 "조상"일 뿐이라 direct-wins
+        // short-circuit이 적용되지 않는다 (resolveRole과 다른 지점).
+        private final File directory = directory(directoryId, "/grandparent", "directory");
+
+        private void grandparentExists() {
+            given(findFilePort.findActiveByNamespaceIdAndPathAndName(new NamespaceId(namespaceId), "/", "grandparent"))
+                    .willReturn(Optional.of(directory(grandparentId, "/", "grandparent")));
+        }
+
+        @Test
+        @DisplayName("directory 자신의 grant가 약해도, 더 관대한 조상(grandparent) grant가 이긴다 — resolveRole과 달리 short-circuit 없음")
+        void foldsTheDirectorysOwnGrantWithItsAncestorsInstead() {
+            grandparentExists();
+            given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(directoryId), callerId))
+                    .willReturn(Optional.of(grant(directoryId, callerId, Role.VIEWER)));
+            given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(grandparentId), callerId))
+                    .willReturn(Optional.of(grant(grandparentId, callerId, Role.EDITOR)));
+
+            assertThat(fileAccessGuard.inheritableRole(directory, callerId)).isEqualTo(Role.EDITOR);
+        }
+
+        @Test
+        @DisplayName("directory 자신의 grant가 조상보다 관대하면 그게 적용된다")
+        void directorysOwnGrantWinsWhenItIsTheMoreGenerousOne() {
+            grandparentExists();
+            given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(directoryId), callerId))
+                    .willReturn(Optional.of(grant(directoryId, callerId, Role.EDITOR)));
+            given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(grandparentId), callerId))
+                    .willReturn(Optional.of(grant(grandparentId, callerId, Role.VIEWER)));
+
+            assertThat(fileAccessGuard.inheritableRole(directory, callerId)).isEqualTo(Role.EDITOR);
+        }
+
+        @Test
+        void nullForAnonymousCaller() {
+            assertThat(fileAccessGuard.inheritableRole(directory, null)).isNull();
         }
     }
 
