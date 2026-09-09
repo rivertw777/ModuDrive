@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ModuDrive is a cloud-drive microservices backend built with **Spring Boot 4.0.0**, **Java 25**, and **Spring Cloud 2025.1.1**, organized as a Gradle multi-module project. Services register with Netflix Eureka for service discovery. Inter-service calls use OpenFeign (`auth-service` → `member-service`) or `WebClient` (`gateway-service` → `auth-service`), with Resilience4j providing circuit breaking and retry.
+ModuDrive is a cloud-drive microservices backend built with **Spring Boot 4.1.1**, **Java 25**, and **Spring Cloud 2025.1.3**, organized as a Gradle 9.7.1 multi-module project. Services register with Netflix Eureka for service discovery. Inter-service calls use OpenFeign (`auth-service` → `member-service`) or `WebClient` (`gateway-service` → `auth-service`), with Resilience4j providing circuit breaking and retry.
 
 ## Build & Run Commands
 
