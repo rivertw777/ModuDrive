@@ -57,9 +57,33 @@ class UpdateFileScopeService implements UpdateFileScopeUseCase {
             if (file.isDirectory() && wasLinkShared) {
                 restrictLinkedDescendants(file);
             }
+            // Deliberately outside the wasLinkShared guard: that flag only says whether *this*
+            // file's own stored scope changed, while an ancestor directory can keep the file wide
+            // open through FileAccessGuard's link fallback regardless. An already-RESTRICTED file
+            // under a LINK folder is exactly the case that made issue #311 answer 200 while the
+            // file stayed public, so a no-op re-request must still clean the path above it.
+            // Naturally idempotent — with no LINK ancestor the walk writes nothing.
+            restrictLinkedAncestors(file);
         }
 
         return saveFilePort.saveFile(file);
+    }
+
+    /** Restricting a file has to actually make it unreachable by link, and a LINK ancestor keeps
+     * handing out VIEWER to anyone who asks — so every link-shared directory above it comes down
+     * with it, each one sweeping its own subtree for the independent link scopes
+     * {@link #restrictLinkedDescendants} exists to catch. Turning off a folder the caller never
+     * named is the loud option, but the quiet one is worse: reporting RESTRICTED for a file that
+     * is still public (spec 2 asks for exactly this cascade). */
+    private void restrictLinkedAncestors(File file) {
+        for (File ancestor : fileAccessGuard.ancestorDirectories(file)) {
+            if (ancestor.getAccessScope() != ShareScope.LINK) {
+                continue;
+            }
+            ancestor.disableLinkSharing();
+            saveFilePort.saveFile(ancestor);
+            restrictLinkedDescendants(ancestor);
+        }
     }
 
     private void restrictLinkedDescendants(File directory) {

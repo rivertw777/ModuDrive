@@ -31,6 +31,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 
 @ExtendWith(MockitoExtension.class)
 class UpdateFileScopeServiceTest {
@@ -170,6 +171,98 @@ class UpdateFileScopeServiceTest {
 
             then(findFilePort).should(never())
                     .findByNamespaceIdAndPathStartingWith(any(NamespaceId.class), any(String.class));
+        }
+    }
+
+    @Nested
+    @DisplayName("조상 폴더가 LINK로 공유 중인 파일을 RESTRICTED로 바꿀 때")
+    class WhenAnAncestorIsStillLinkShared {
+
+        private final UUID namespaceId = UUID.randomUUID();
+
+        private File makeLinkedAncestor(String name, String path) {
+            File ancestor = File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespaceId),
+                    new FileName(name), new FilePath(path), new FileOwnerId(ownerId),
+                    null, null, FileStatus.UPLOADED, new FileIsDirectory(true));
+            ancestor.enableLinkSharing(Role.VIEWER);
+            return ancestor;
+        }
+
+        @Test
+        void restrictsTheAncestorToo() {
+            // FileAccessGuard's link fallback keeps handing out VIEWER through the ancestor, so
+            // leaving it LINK would mean answering RESTRICTED for a file that is still public.
+            File linkedFile = makeFile();
+            linkedFile.enableLinkSharing(Role.VIEWER);
+            File ancestor = makeLinkedAncestor("a", "/");
+            given(findFilePort.findById(new FileId(fileId))).willReturn(Optional.of(linkedFile));
+            given(fileAccessGuard.ancestorDirectories(linkedFile)).willReturn(List.of(ancestor));
+            given(saveFilePort.saveFile(any(File.class))).willAnswer(inv -> inv.getArgument(0));
+
+            updateFileScopeService.updateFileScope(command(ShareScope.RESTRICTED));
+
+            assertThat(ancestor.getAccessScope()).isEqualTo(ShareScope.RESTRICTED);
+            assertThat(ancestor.getLinkRole()).isNull();
+            then(saveFilePort).should().saveFile(ancestor);
+        }
+
+        @Test
+        void sweepsTheAncestorsOwnSubtreeToo() {
+            // Restricting the ancestor has to mean nothing under it is link-public anymore —
+            // including a sibling that opted into LINK on its own, same rule as restricting a
+            // folder directly.
+            File linkedFile = makeFile();
+            linkedFile.enableLinkSharing(Role.VIEWER);
+            File ancestor = makeLinkedAncestor("a", "/");
+            File siblingWithOwnLink = File.withId(new FileId(UUID.randomUUID()),
+                    new FileNamespaceId(namespaceId), new FileName("sibling.pdf"), new FilePath("/a"),
+                    new FileOwnerId(ownerId), null, null, FileStatus.UPLOADED, new FileIsDirectory(false));
+            siblingWithOwnLink.enableLinkSharing(Role.VIEWER);
+            given(findFilePort.findById(new FileId(fileId))).willReturn(Optional.of(linkedFile));
+            given(fileAccessGuard.ancestorDirectories(linkedFile)).willReturn(List.of(ancestor));
+            given(findFilePort.findByNamespaceIdAndPathStartingWith(
+                    new NamespaceId(namespaceId), ancestor.fullPath()))
+                    .willReturn(List.of(siblingWithOwnLink));
+            given(saveFilePort.saveFile(any(File.class))).willAnswer(inv -> inv.getArgument(0));
+
+            updateFileScopeService.updateFileScope(command(ShareScope.RESTRICTED));
+
+            assertThat(siblingWithOwnLink.getAccessScope()).isEqualTo(ShareScope.RESTRICTED);
+            then(saveFilePort).should().saveFile(siblingWithOwnLink);
+        }
+
+        @Test
+        void cleansTheAncestorEvenWhenTheFileWasAlreadyRestricted() {
+            // The #311 reproduction: the file's stored scope never changes, so the request is a
+            // no-op for the file itself — but it is exactly the request a user makes after seeing
+            // the file is still public, and the ancestor check must not sit behind the
+            // wasLinkShared guard that (correctly) suppresses the descendant sweep here.
+            File alreadyRestricted = makeFile();
+            File ancestor = makeLinkedAncestor("a", "/");
+            given(findFilePort.findById(new FileId(fileId))).willReturn(Optional.of(alreadyRestricted));
+            given(fileAccessGuard.ancestorDirectories(alreadyRestricted)).willReturn(List.of(ancestor));
+            given(saveFilePort.saveFile(any(File.class))).willAnswer(inv -> inv.getArgument(0));
+
+            updateFileScopeService.updateFileScope(command(ShareScope.RESTRICTED));
+
+            assertThat(ancestor.getAccessScope()).isEqualTo(ShareScope.RESTRICTED);
+            then(saveFilePort).should().saveFile(ancestor);
+        }
+
+        @Test
+        void savesNothingExtraWhenNoAncestorIsLinkShared() {
+            File alreadyRestricted = makeFile();
+            File plainAncestor = File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespaceId),
+                    new FileName("a"), new FilePath("/"), new FileOwnerId(ownerId),
+                    null, null, FileStatus.UPLOADED, new FileIsDirectory(true));
+            given(findFilePort.findById(new FileId(fileId))).willReturn(Optional.of(alreadyRestricted));
+            given(fileAccessGuard.ancestorDirectories(alreadyRestricted)).willReturn(List.of(plainAncestor));
+            given(saveFilePort.saveFile(any(File.class))).willAnswer(inv -> inv.getArgument(0));
+
+            updateFileScopeService.updateFileScope(command(ShareScope.RESTRICTED));
+
+            then(saveFilePort).should(times(1)).saveFile(any(File.class));
+            then(saveFilePort).should().saveFile(alreadyRestricted);
         }
     }
 

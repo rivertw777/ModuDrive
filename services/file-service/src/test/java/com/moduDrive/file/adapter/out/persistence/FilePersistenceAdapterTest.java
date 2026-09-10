@@ -310,6 +310,10 @@ class FilePersistenceAdapterTest {
             assertThat(created.getSharedWithUserId()).isNull();
             assertThat(created.getToken()).isNotNull();
             assertThat(filePersistenceAdapter.existsByFileIdAndGranteeEmail(fileId, "guest@example.com")).isTrue();
+            // Revoking a guest's grants has to follow them across ancestor directories, so the row
+            // itself — not just its presence — has to be reachable by email (see RevokeFileShareService).
+            assertThat(filePersistenceAdapter.findByFileIdAndGranteeEmail(fileId, "guest@example.com"))
+                    .get().extracting(FileShare::getId).isEqualTo(created.getId());
             assertThat(filePersistenceAdapter.findByToken(created.getToken()))
                     .get().extracting(FileShare::getGranteeEmail).isEqualTo("guest@example.com");
         }

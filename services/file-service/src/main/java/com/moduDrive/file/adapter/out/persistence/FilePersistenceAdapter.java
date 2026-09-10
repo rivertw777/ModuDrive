@@ -337,6 +337,12 @@ class FilePersistenceAdapter implements
     }
 
     @Override
+    public Optional<FileShare> findByFileIdAndGranteeEmail(FileId fileId, String granteeEmail) {
+        return fileShareRepository.findByFileIdAndGranteeEmail(fileId.value(), granteeEmail)
+                .map(fileMapper::mapFileShareToDomain);
+    }
+
+    @Override
     public Optional<FileShare> findByToken(UUID token) {
         LocalDateTime cutoff = LocalDateTime.now().minusDays(GUEST_SHARE_TOKEN_TTL_DAYS);
         return fileShareRepository.findByTokenAndCreatedAtAfter(token, cutoff)
