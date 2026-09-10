@@ -53,10 +53,9 @@ class UpdateFileScopeControllerTest {
     class WhenOwnerSwitchesToLink {
 
         @Test
-        void returnsScopeWithLinkToken() throws Exception {
-            UUID token = UUID.randomUUID();
+        void returnsScopeWithRole() throws Exception {
             File linked = file();
-            linked.enableLinkSharing(token, Role.VIEWER);
+            linked.enableLinkSharing(Role.VIEWER);
             given(updateFileScopeUseCase.updateFileScope(any(UpdateFileScopeCommand.class))).willReturn(linked);
 
             mockMvc.perform(put("/api/v1/files/{fileId}/scope", FILE_ID)
@@ -65,7 +64,6 @@ class UpdateFileScopeControllerTest {
                             .content(LINK_JSON))
                     .andExpect(status().isOk())
                     .andExpect(jsonPath("$.data.scope").value("LINK"))
-                    .andExpect(jsonPath("$.data.linkToken").value(token.toString()))
                     .andExpect(jsonPath("$.data.role").value("VIEWER"));
         }
 

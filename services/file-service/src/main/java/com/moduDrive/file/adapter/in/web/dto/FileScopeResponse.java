@@ -9,10 +9,9 @@ import java.util.UUID;
 public record FileScopeResponse(
         UUID fileId,
         ShareScope scope,
-        UUID linkToken,
         Role role
 ) {
     public static FileScopeResponse from(File file) {
-        return new FileScopeResponse(file.getId(), file.getAccessScope(), file.getLinkToken(), file.getLinkRole());
+        return new FileScopeResponse(file.getId(), file.getAccessScope(), file.getLinkRole());
     }
 }

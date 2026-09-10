@@ -15,8 +15,6 @@ import java.util.UUID;
 
 interface SpringDataFileRepository extends JpaRepository<FileJpaEntity, UUID>, JpaSpecificationExecutor<FileJpaEntity> {
 
-    Optional<FileJpaEntity> findByLinkToken(UUID linkToken);
-
     List<FileJpaEntity> findByNamespaceIdAndPathAndStatusNotIn(
             UUID namespaceId, String path, Collection<FileStatus> statuses);
 

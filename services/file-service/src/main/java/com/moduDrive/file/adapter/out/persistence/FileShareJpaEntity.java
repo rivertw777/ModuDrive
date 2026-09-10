@@ -81,9 +81,4 @@ class FileShareJpaEntity extends CreatedAtEntity {
         this.sharedWithUserId = sharedWithUserId;
         this.granteeEmail = null;
     }
-
-    /** Mirrors {@link com.moduDrive.file.domain.model.FileShare#revokeToken}. */
-    void applyRevokeToken() {
-        this.token = null;
-    }
 }

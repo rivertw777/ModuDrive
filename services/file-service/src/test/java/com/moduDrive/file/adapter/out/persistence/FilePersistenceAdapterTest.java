@@ -198,40 +198,41 @@ class FilePersistenceAdapterTest {
     }
 
     @Nested
-    @DisplayName("공유 범위와 링크 토큰을 저장할 때")
+    @DisplayName("공유 범위를 저장할 때")
     class WhenPersistingLinkSharing {
 
         @Test
-        @DisplayName("LINK로 전환한 파일은 토큰으로 다시 조회된다")
-        void roundTripsAccessScopeAndLinkToken() {
+        @DisplayName("LINK로 전환한 파일은 scope/role이 그대로 다시 조회된다")
+        void roundTripsAccessScopeAndLinkRole() {
             File saved = filePersistenceAdapter.saveFile(File.create(
                     new FileNamespaceId(namespaceIdValue), new FileName("public.pdf"),
                     new FilePath("/1"), new FileOwnerId(UUID.randomUUID()), new FileIsDirectory(false)));
-            UUID token = UUID.randomUUID();
-            saved.enableLinkSharing(token, Role.EDITOR);
-            filePersistenceAdapter.saveFile(saved);
+            saved.enableLinkSharing(Role.EDITOR);
+            File linked = filePersistenceAdapter.saveFile(saved);
 
-            var result = filePersistenceAdapter.findByLinkToken(token);
+            var result = filePersistenceAdapter.findById(new File.FileId(linked.getId()));
 
             assertThat(result).isPresent();
             assertThat(result.get().getAccessScope()).isEqualTo(ShareScope.LINK);
-            assertThat(result.get().getLinkToken()).isEqualTo(token);
             assertThat(result.get().getLinkRole()).isEqualTo(Role.EDITOR);
         }
 
         @Test
-        @DisplayName("RESTRICTED로 되돌리면 토큰으로 더 이상 조회되지 않는다")
-        void clearsTokenOnRestricted() {
+        @DisplayName("RESTRICTED로 되돌리면 scope/role이 함께 사라진다")
+        void clearsScopeOnRestricted() {
             File saved = filePersistenceAdapter.saveFile(File.create(
                     new FileNamespaceId(namespaceIdValue), new FileName("was-public.pdf"),
                     new FilePath("/1"), new FileOwnerId(UUID.randomUUID()), new FileIsDirectory(false)));
-            UUID token = UUID.randomUUID();
-            saved.enableLinkSharing(token, Role.VIEWER);
+            saved.enableLinkSharing(Role.VIEWER);
             File linked = filePersistenceAdapter.saveFile(saved);
             linked.disableLinkSharing();
             filePersistenceAdapter.saveFile(linked);
 
-            assertThat(filePersistenceAdapter.findByLinkToken(token)).isEmpty();
+            var result = filePersistenceAdapter.findById(new File.FileId(linked.getId()));
+
+            assertThat(result).isPresent();
+            assertThat(result.get().getAccessScope()).isEqualTo(ShareScope.RESTRICTED);
+            assertThat(result.get().getLinkRole()).isNull();
         }
     }
 

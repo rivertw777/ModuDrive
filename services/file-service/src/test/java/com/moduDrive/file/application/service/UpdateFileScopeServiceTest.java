@@ -2,19 +2,10 @@ package com.moduDrive.file.application.service;
 
 import com.moduDrive.common.core.exception.BusinessException;
 import com.moduDrive.file.application.port.in.command.UpdateFileScopeCommand;
-import com.moduDrive.file.application.port.out.DeleteFileSharePort;
 import com.moduDrive.file.application.port.out.FindFilePort;
-import com.moduDrive.file.application.port.out.FindFileSharePort;
 import com.moduDrive.file.application.port.out.SaveFilePort;
-import com.moduDrive.file.application.port.out.SaveFileSharePort;
 import com.moduDrive.file.domain.model.File;
 import com.moduDrive.file.domain.model.File.*;
-import com.moduDrive.file.domain.model.FileShare;
-import com.moduDrive.file.domain.model.FileShare.FileShareFileId;
-import com.moduDrive.file.domain.model.FileShare.FileShareId;
-import com.moduDrive.file.domain.model.FileShare.FileShareOwnerId;
-import com.moduDrive.file.domain.model.FileShare.FileShareRole;
-import com.moduDrive.file.domain.model.FileShare.FileShareSharedWithUserId;
 import com.moduDrive.file.domain.model.FileStatus;
 import com.moduDrive.file.domain.model.Namespace.NamespaceId;
 import com.moduDrive.file.domain.model.Role;
@@ -46,9 +37,6 @@ class UpdateFileScopeServiceTest {
 
     @Mock private FindFilePort findFilePort;
     @Mock private SaveFilePort saveFilePort;
-    @Mock private FindFileSharePort findFileSharePort;
-    @Mock private DeleteFileSharePort deleteFileSharePort;
-    @Mock private SaveFileSharePort saveFileSharePort;
     @Mock private FileAccessGuard fileAccessGuard;
     @InjectMocks private UpdateFileScopeService updateFileScopeService;
 
@@ -74,28 +62,14 @@ class UpdateFileScopeServiceTest {
     class WhenSwitchingToLink {
 
         @Test
-        void issuesLinkToken() {
+        void switchesScopeToLinkWithAViewerRole() {
             given(findFilePort.findById(new FileId(fileId))).willReturn(Optional.of(makeFile()));
             given(saveFilePort.saveFile(any(File.class))).willAnswer(inv -> inv.getArgument(0));
 
             File result = updateFileScopeService.updateFileScope(command(ShareScope.LINK));
 
             assertThat(result.getAccessScope()).isEqualTo(ShareScope.LINK);
-            assertThat(result.getLinkToken()).isNotNull();
             assertThat(result.getLinkRole()).isEqualTo(Role.VIEWER);
-        }
-
-        @Test
-        void keepsExistingTokenWhenLinkIsReSelected() {
-            File alreadyLinked = makeFile();
-            UUID existingToken = UUID.randomUUID();
-            alreadyLinked.enableLinkSharing(existingToken, Role.VIEWER);
-            given(findFilePort.findById(new FileId(fileId))).willReturn(Optional.of(alreadyLinked));
-            given(saveFilePort.saveFile(any(File.class))).willAnswer(inv -> inv.getArgument(0));
-
-            File result = updateFileScopeService.updateFileScope(command(ShareScope.LINK));
-
-            assertThat(result.getLinkToken()).isEqualTo(existingToken);
         }
     }
 
@@ -104,53 +78,22 @@ class UpdateFileScopeServiceTest {
     class WhenSwitchingToRestricted {
 
         @Test
-        void clearsLinkToken() {
+        void clearsTheScope() {
             File linked = makeFile();
-            linked.enableLinkSharing(UUID.randomUUID(), Role.VIEWER);
+            linked.enableLinkSharing(Role.VIEWER);
             given(findFilePort.findById(new FileId(fileId))).willReturn(Optional.of(linked));
-            given(findFileSharePort.findByFileId(new FileId(fileId))).willReturn(List.of());
             given(saveFilePort.saveFile(any(File.class))).willAnswer(inv -> inv.getArgument(0));
 
             File result = updateFileScopeService.updateFileScope(command(ShareScope.RESTRICTED));
 
             assertThat(result.getAccessScope()).isEqualTo(ShareScope.RESTRICTED);
-            assertThat(result.getLinkToken()).isNull();
             assertThat(result.getLinkRole()).isNull();
         }
 
-        @Test
-        void deletesUnclaimedInvitesAndStripsTheAnonymousTokenFromClaimedOnes() {
-            File linked = makeFile();
-            linked.enableLinkSharing(UUID.randomUUID(), Role.VIEWER);
-            UUID pendingShareId = UUID.randomUUID();
-            UUID memberShareId = UUID.randomUUID();
-            UUID claimedShareId = UUID.randomUUID();
-            FileShare pendingGuestShare = FileShare.withId(new FileShareId(pendingShareId),
-                    new FileShareFileId(fileId), new FileShareOwnerId(ownerId), null,
-                    new FileShareRole(Role.VIEWER), UUID.randomUUID(), "guest@example.com", null);
-            FileShare memberShare = FileShare.withId(new FileShareId(memberShareId),
-                    new FileShareFileId(fileId), new FileShareOwnerId(ownerId),
-                    new FileShareSharedWithUserId(UUID.randomUUID()), new FileShareRole(Role.VIEWER));
-            // A claimed guest share: sharedWithUserId filled + token still live. Turning link
-            // sharing off keeps the member grant but must kill its anonymous bearer link.
-            FileShare claimedShare = FileShare.withId(new FileShareId(claimedShareId),
-                    new FileShareFileId(fileId), new FileShareOwnerId(ownerId),
-                    new FileShareSharedWithUserId(UUID.randomUUID()), new FileShareRole(Role.VIEWER),
-                    UUID.randomUUID(), null, null);
-            given(findFilePort.findById(new FileId(fileId))).willReturn(Optional.of(linked));
-            given(findFileSharePort.findByFileId(new FileId(fileId)))
-                    .willReturn(List.of(pendingGuestShare, memberShare, claimedShare));
-            given(saveFilePort.saveFile(any(File.class))).willAnswer(inv -> inv.getArgument(0));
-
-            updateFileScopeService.updateFileScope(command(ShareScope.RESTRICTED));
-
-            then(deleteFileSharePort).should().deleteFileShare(new FileShareId(pendingShareId));
-            then(deleteFileSharePort).shouldHaveNoMoreInteractions();
-            then(saveFileSharePort).should().saveFileShare(claimedShare);
-            then(saveFileSharePort).shouldHaveNoMoreInteractions();
-            assertThat(claimedShare.getToken()).isNull();
-            assertThat(memberShare.getToken()).isNull(); // was already null; untouched
-        }
+        // Email invites (FileShare rows) are never touched by a scope change — link sharing and
+        // named invites are independent settings (issue #303). This service doesn't even depend
+        // on a FileShare port anymore, so there is no way for it to reach an invite row at all;
+        // the guarantee is structural, not something a mock interaction here could regress.
     }
 
     @Nested
@@ -163,7 +106,7 @@ class UpdateFileScopeServiceTest {
             File directory = File.withId(new FileId(fileId), new FileNamespaceId(namespaceId),
                     new FileName("a"), new FilePath("/"), new FileOwnerId(ownerId),
                     null, null, FileStatus.UPLOADED, new FileIsDirectory(true));
-            directory.enableLinkSharing(UUID.randomUUID(), Role.VIEWER);
+            directory.enableLinkSharing(Role.VIEWER);
             return directory;
         }
 
@@ -178,12 +121,11 @@ class UpdateFileScopeServiceTest {
             File directory = makeLinkedDirectory();
             // b: shared with its own separate LINK, not merely inherited from `a`.
             File descendantWithOwnLink = makeDescendant("b");
-            descendantWithOwnLink.enableLinkSharing(UUID.randomUUID(), Role.VIEWER);
+            descendantWithOwnLink.enableLinkSharing(Role.VIEWER);
             // c: never had its own scope — already RESTRICTED, only ever reachable via `a`.
             File alreadyRestrictedDescendant = makeDescendant("c");
 
             given(findFilePort.findById(new FileId(fileId))).willReturn(Optional.of(directory));
-            given(findFileSharePort.findByFileId(any(File.FileId.class))).willReturn(List.of());
             given(findFilePort.findByNamespaceIdAndPathStartingWith(
                     new NamespaceId(namespaceId), directory.fullPath()))
                     .willReturn(List.of(descendantWithOwnLink, alreadyRestrictedDescendant));
@@ -192,7 +134,7 @@ class UpdateFileScopeServiceTest {
             updateFileScopeService.updateFileScope(command(ShareScope.RESTRICTED));
 
             assertThat(descendantWithOwnLink.getAccessScope()).isEqualTo(ShareScope.RESTRICTED);
-            assertThat(descendantWithOwnLink.getLinkToken()).isNull();
+            assertThat(descendantWithOwnLink.getLinkRole()).isNull();
             then(saveFilePort).should().saveFile(descendantWithOwnLink);
             // Never had a scope of its own to clear — restricting `a` already cuts off its only
             // (inherited) access path; nothing here needs to write to it.
@@ -202,13 +144,12 @@ class UpdateFileScopeServiceTest {
         @Test
         void doesNotSweepWhenTheDirectoryWasAlreadyRestricted() {
             // A no-op RESTRICTED->RESTRICTED request must not touch descendants — sweeping here
-            // would permanently kill their own independent link tokens for a request that changed
+            // would permanently kill their own independent link scopes for a request that changed
             // nothing about this directory.
             File directory = File.withId(new FileId(fileId), new FileNamespaceId(namespaceId),
                     new FileName("a"), new FilePath("/"), new FileOwnerId(ownerId),
                     null, null, FileStatus.UPLOADED, new FileIsDirectory(true));
             given(findFilePort.findById(new FileId(fileId))).willReturn(Optional.of(directory));
-            given(findFileSharePort.findByFileId(new FileId(fileId))).willReturn(List.of());
             given(saveFilePort.saveFile(any(File.class))).willAnswer(inv -> inv.getArgument(0));
 
             updateFileScopeService.updateFileScope(command(ShareScope.RESTRICTED));
@@ -221,9 +162,8 @@ class UpdateFileScopeServiceTest {
         void leavesDescendantsAloneWhenRestrictingAPlainFile() {
             // makeFile() is a leaf file, not a directory — no subtree to sweep.
             File linkedFile = makeFile();
-            linkedFile.enableLinkSharing(UUID.randomUUID(), Role.VIEWER);
+            linkedFile.enableLinkSharing(Role.VIEWER);
             given(findFilePort.findById(new FileId(fileId))).willReturn(Optional.of(linkedFile));
-            given(findFileSharePort.findByFileId(new FileId(fileId))).willReturn(List.of());
             given(saveFilePort.saveFile(any(File.class))).willAnswer(inv -> inv.getArgument(0));
 
             updateFileScopeService.updateFileScope(command(ShareScope.RESTRICTED));
