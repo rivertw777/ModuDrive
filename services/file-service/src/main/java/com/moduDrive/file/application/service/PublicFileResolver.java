@@ -17,18 +17,21 @@ import java.util.UUID;
 
 /**
  * Turns a {@code (fileId, key)} pair into a file for the unauthenticated routes — the
- * Google-Drive-style stable link {@code /public/{fileId}?key={token}}. {@code fileId} identifies
- * the entry; {@code key} is the capability that authorizes it and comes from one of two
- * independent spaces:
+ * Google-Drive-style stable link {@code /public/{fileId}}. {@code fileId} identifies the entry;
+ * access is granted through one of two independent means:
  * <ul>
- *   <li>a file's or folder's own {@code linkToken} ("anyone with the link", scope LINK) — opens
- *       that entry <b>and everything nested under it</b>;</li>
- *   <li>a pending/claimed guest share's per-invite {@code token} (see
- *       {@link com.moduDrive.file.domain.model.FileShare#createPending}) — opens <b>only the one
- *       entry it was minted for</b>, never a subtree or a directory listing.</li>
+ *   <li>{@code fileId} alone, when the entry (or an ancestor folder) is scope LINK — see
+ *       {@link FileAccessGuard#linkRole}. No {@code key} needed: {@code fileId} is already an
+ *       unguessable capability (issue #303), and this opens that entry <b>and everything nested
+ *       under it</b>;</li>
+ *   <li>failing that, {@code key} against one of two legacy capability spaces: a file's or
+ *       folder's own {@code linkToken} (the same "anyone with the link" reach as above, kept for
+ *       links minted before #303), or a pending/claimed guest share's per-invite {@code token}
+ *       (see {@link com.moduDrive.file.domain.model.FileShare#createPending}) — opens <b>only the
+ *       one entry it was minted for</b>, never a subtree or a directory listing.</li>
  * </ul>
- * The requested {@code fileId} is allowed only if it is the entry the key unlocks or (for a link
- * token) nested under it, so one folder's key can never reach another's contents. Every rejection
+ * The requested {@code fileId} is allowed only if it is the entry a link/key unlocks or (for a
+ * link) nested under it, so one folder's link can never reach another's contents. Every rejection
  * is the same FILE_NOT_FOUND regardless of which check almost passed: an anonymous caller must
  * not be able to tell "malformed" from "wrong key" from "right key, sharing switched off" from
  * "right key, file trashed" from "right key, wrong fileId".
@@ -42,12 +45,17 @@ class PublicFileResolver {
 
     private final FindFilePort findFilePort;
     private final FindFileSharePort findFileSharePort;
+    private final FileAccessGuard fileAccessGuard;
 
-    /** The entry at {@code fileId}, provided {@code key} unlocks it (or, for a link token, an
-     * ancestor folder). */
+    /** The entry at {@code fileId}, provided either it (or an ancestor) is plain "anyone with the
+     * link" — no {@code key} needed at all, see {@link FileAccessGuard#linkRole} (issue #303) — or
+     * {@code key} unlocks it the old way (a link token, or a per-invite guest token). */
     File resolve(String fileId, String key) {
-        Unlocked unlocked = unlockRoot(key);
         File target = target(fileId);
+        if (fileAccessGuard.linkRole(target) != null) {
+            return target;
+        }
+        Unlocked unlocked = unlockRoot(key);
         if (!unlocks(unlocked, target)) {
             throw notFound();
         }
@@ -56,16 +64,20 @@ class PublicFileResolver {
 
     /** Direct children of the directory at {@code fileId} (a link-shared folder, or one nested
      * under it), trashed/purged entries excluded. A per-invite guest token cannot reach this —
-     * listing a folder needs the folder itself to be "anyone with the link". */
+     * listing a folder needs the folder itself (or an ancestor) to be "anyone with the link". */
     List<File> resolveChildren(String fileId, String key) {
-        Unlocked unlocked = unlockRoot(key);
-        if (!unlocked.subtree()) {
-            throw notFound();
-        }
         File dir = target(fileId);
-        if (!unlocks(unlocked, dir) || !dir.isDirectory()) {
+        if (dir.isDirectory() && fileAccessGuard.linkRole(dir) != null) {
+            return childrenOf(dir);
+        }
+        Unlocked unlocked = unlockRoot(key);
+        if (!unlocked.subtree() || !unlocks(unlocked, dir) || !dir.isDirectory()) {
             throw notFound();
         }
+        return childrenOf(dir);
+    }
+
+    private List<File> childrenOf(File dir) {
         return findFilePort
                 .findByNamespaceIdAndPath(new NamespaceId(dir.getNamespaceId()), dir.fullPath())
                 .stream()

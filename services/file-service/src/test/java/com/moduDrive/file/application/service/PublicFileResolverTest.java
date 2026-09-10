@@ -27,12 +27,14 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 
 @ExtendWith(MockitoExtension.class)
 class PublicFileResolverTest {
 
     @Mock private FindFilePort findFilePort;
     @Mock private FindFileSharePort findFileSharePort;
+    @Mock private FileAccessGuard fileAccessGuard;
     @InjectMocks private PublicFileResolver publicFileResolver;
 
     private final UUID key = UUID.randomUUID();
@@ -57,6 +59,58 @@ class PublicFileResolverTest {
     private FileShare guestShareOn(File f) {
         return FileShare.createPending(new FileShareFileId(f.getId()), new FileShareOwnerId(f.getOwnerId()),
                 new FileShareGranteeEmail("guest@example.com"), new FileShareRole(Role.VIEWER));
+    }
+
+    @Nested
+    @DisplayName("key 없이, fileId만으로 scope==LINK에 도달할 때 (issue #303)")
+    class WhenLinkScopeReachesWithoutAKey {
+
+        @Test
+        @DisplayName("파일 자신이 LINK scope면 key가 없어도 열린다")
+        void ownLinkScopeNeedsNoKey() {
+            File f = file("report.pdf", "/1", false, FileStatus.UPLOADED);
+            givenFound(f);
+            given(fileAccessGuard.linkRole(f)).willReturn(Role.VIEWER);
+
+            assertThat(publicFileResolver.resolve(f.getId().toString(), null).getName())
+                    .isEqualTo("report.pdf");
+        }
+
+        @Test
+        @DisplayName("조상 폴더가 LINK scope면 key가 없어도(엉뚱한 key여도) 열린다")
+        void ancestorLinkScopeNeedsNoKeyEitherAndIgnoresAGarbageKey() {
+            File f = file("report.pdf", "/shared", false, FileStatus.UPLOADED);
+            givenFound(f);
+            given(fileAccessGuard.linkRole(f)).willReturn(Role.VIEWER);
+
+            assertThat(publicFileResolver.resolve(f.getId().toString(), "not-a-uuid").getName())
+                    .isEqualTo("report.pdf");
+            // The key-based path (findByLinkToken/findByToken) is never even consulted once the
+            // fileAccessGuard fast path already succeeded.
+            then(findFileSharePort).shouldHaveNoInteractions();
+        }
+
+        @Test
+        @DisplayName("디렉토리 자신이 LINK scope면 key 없이도 자식 목록을 조회할 수 있다")
+        void resolvesChildrenOfALinkScopedDirectoryWithoutAKey() {
+            File folder = file("shared", "/", true, FileStatus.UPLOADED);
+            givenFound(folder);
+            given(fileAccessGuard.linkRole(folder)).willReturn(Role.VIEWER);
+            File child = file("a.txt", "/shared", false, FileStatus.UPLOADED);
+            given(findFilePort.findByNamespaceIdAndPath(any(), eq("/shared"))).willReturn(List.of(child));
+
+            assertThat(publicFileResolver.resolveChildren(folder.getId().toString(), null))
+                    .containsExactly(child);
+        }
+
+        @Test
+        @DisplayName("LINK scope여도 파일(디렉토리 아님)에는 자식 목록 조회가 안 된다")
+        void nonDirectoryStillRejectedForResolveChildrenEvenWhenLinkScoped() {
+            File f = file("report.pdf", "/1", false, FileStatus.UPLOADED);
+            givenFound(f);
+
+            assertNotFound(catchThrowable(() -> publicFileResolver.resolveChildren(f.getId().toString(), null)));
+        }
     }
 
     @Nested
@@ -93,6 +147,7 @@ class PublicFileResolverTest {
         @Test
         void throwsFileNotFoundWithoutLeakingThatKeyMatched() {
             File f = file("report.pdf", "/1", false, FileStatus.UPLOADED); // no enableLinkSharing
+            givenFound(f);
             given(findFilePort.findByLinkToken(key)).willReturn(Optional.of(f));
             given(findFileSharePort.findByToken(key)).willReturn(Optional.empty());
 
@@ -148,10 +203,11 @@ class PublicFileResolverTest {
 
         @Test
         void throwsFileNotFoundWhenTheTargetIsTrashed() {
+            // target() itself filters out anything removed before any key/scope check even runs,
+            // so no link/guest setup is needed here at all — a trashed target is unreachable no
+            // matter how it would otherwise have been unlocked.
             File f = file("report.pdf", "/1", false, FileStatus.TRASHED);
-            f.enableLinkSharing(key, Role.VIEWER);
-            given(findFilePort.findByLinkToken(key)).willReturn(Optional.of(f));
-            given(findFileSharePort.findByToken(key)).willReturn(Optional.empty());
+            givenFound(f);
 
             assertNotFound(catchThrowable(() -> publicFileResolver.resolve(f.getId().toString(), key.toString())));
         }
@@ -163,8 +219,10 @@ class PublicFileResolverTest {
             folder.enableLinkSharing(key, Role.VIEWER);
             given(findFilePort.findByLinkToken(key)).willReturn(Optional.of(folder));
             given(findFileSharePort.findByToken(key)).willReturn(Optional.empty());
-            // resolve() rejects at unlockRoot (trashed root), before the child is ever looked up.
+            // The child itself is live and resolves fine; resolve() only rejects once it walks up
+            // to unlockRoot and finds the link-shared root trashed.
             File child = file("a.txt", "/shared", false, FileStatus.UPLOADED);
+            givenFound(child);
 
             assertNotFound(catchThrowable(
                     () -> publicFileResolver.resolve(child.getId().toString(), key.toString())));
@@ -173,9 +231,9 @@ class PublicFileResolverTest {
         @Test
         @DisplayName("파일은 살아있어도 게스트 공유된 루트가 휴지통이면 거부")
         void throwsWhenTheGuestSharedRootIsTrashed() {
+            // Same as throwsFileNotFoundWhenTheTargetIsTrashed above — target() filters the
+            // trashed target out before any guest-token check would even run.
             File f = file("report.pdf", "/1", false, FileStatus.TRASHED);
-            given(findFilePort.findByLinkToken(key)).willReturn(Optional.empty());
-            given(findFileSharePort.findByToken(key)).willReturn(Optional.of(guestShareOn(f)));
             given(findFilePort.findById(new FileId(f.getId()))).willReturn(Optional.of(f));
 
             assertNotFound(catchThrowable(() -> publicFileResolver.resolve(f.getId().toString(), key.toString())));
@@ -188,9 +246,7 @@ class PublicFileResolverTest {
 
         @Test
         void unknownFileId() {
-            File f = file("report.pdf", "/1", false, FileStatus.UPLOADED);
-            f.enableLinkSharing(key, Role.VIEWER);
-            given(findFilePort.findByLinkToken(key)).willReturn(Optional.of(f));
+            // target() rejects an unresolvable fileId immediately, before any key is even parsed.
             UUID id = UUID.randomUUID();
             given(findFilePort.findById(new FileId(id))).willReturn(Optional.empty());
 
@@ -199,20 +255,19 @@ class PublicFileResolverTest {
 
         @Test
         void malformedFileId() {
-            File f = file("report.pdf", "/1", false, FileStatus.UPLOADED);
-            f.enableLinkSharing(key, Role.VIEWER);
-            given(findFilePort.findByLinkToken(key)).willReturn(Optional.of(f));
-
+            // Rejected by target()'s own UUID parsing before any key is ever consulted.
             assertNotFound(catchThrowable(() -> publicFileResolver.resolve("not-a-uuid", key.toString())));
         }
 
         @Test
         void unknownKey() {
+            File f = file("report.pdf", "/1", false, FileStatus.UPLOADED); // no enableLinkSharing
+            givenFound(f);
             given(findFilePort.findByLinkToken(key)).willReturn(Optional.empty());
             given(findFileSharePort.findByToken(key)).willReturn(Optional.empty());
 
             assertNotFound(catchThrowable(
-                    () -> publicFileResolver.resolve(UUID.randomUUID().toString(), key.toString())));
+                    () -> publicFileResolver.resolve(f.getId().toString(), key.toString())));
         }
 
         @Test
@@ -319,6 +374,7 @@ class PublicFileResolverTest {
         @Test
         void rejectsWhenTheFolderIsNotLinkShared() {
             File folder = file("shared", "/", true, FileStatus.UPLOADED); // no enableLinkSharing
+            givenFound(folder);
             given(findFilePort.findByLinkToken(key)).willReturn(Optional.of(folder));
             given(findFileSharePort.findByToken(key)).willReturn(Optional.empty());
 

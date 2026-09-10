@@ -138,6 +138,16 @@ class FileAccessGuard {
         return null;
     }
 
+    /** Whether {@code file} is reachable purely through "anyone with the link" — its own LINK
+     * scope, or the nearest ancestor directory's — with no grant and no caller identity involved
+     * at all. {@link #resolveRole} uses this as its own last resort for a signed-in caller with no
+     * named grant; {@code PublicFileResolver} uses it directly for an anonymous visitor, who has
+     * nothing else to fall back on (issue #303 — the two routes share this one judgment instead of
+     * each re-deciding what "anyone with the link" means). Null when neither applies. */
+    Role linkRole(File file) {
+        return linkRoleFallback(file, ancestorDirectories(file));
+    }
+
     /** The specific share row that explains why {@code callerId} can read {@code file} — their
      * own grant on it, or failing that, the nearest ancestor directory's. Unlike
      * {@link #effectiveRole} (which only needs the resolved role, for a permission check),
