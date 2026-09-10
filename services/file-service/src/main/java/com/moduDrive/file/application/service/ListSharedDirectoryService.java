@@ -56,10 +56,10 @@ class ListSharedDirectoryService implements ListSharedDirectoryUseCase {
         // Children of a shared folder inherit the caller's role *and* the "공유한 사용자"/"공유된
         // 날짜" attribution from that folder's own grant — 공유 문서함 shows the same columns whether
         // you're at the root or three folders deep, so resolve both once here rather than per row.
-        // inheritableRole, not effectiveRole: from a child's point of view `directory` is just one
-        // more ancestor, so a grant on it must still fold with (not short-circuit over) whatever a
-        // grandparent above it grants — the "direct grant wins outright" rule only applies at the
-        // level of the file actually being accessed, i.e. each child below, not this directory.
+        // inheritableRole, not effectiveRole: from a child's point of view `directory` is just its
+        // nearest ancestor, so its own grant wins outright over a grandparent's — same rule as a
+        // file's own direct grant in effectiveRole. Kept as a separate method purely to name this
+        // call site's intent ("what does a child inherit"), not because the logic differs.
         Role inheritedRole = fileAccessGuard.inheritableRole(directory, callerId);
         Optional<FileShare> grant = fileAccessGuard.resolveGrant(directory, callerId);
         MemberSummary sharedBy = lookupMember(directory.getOwnerId());

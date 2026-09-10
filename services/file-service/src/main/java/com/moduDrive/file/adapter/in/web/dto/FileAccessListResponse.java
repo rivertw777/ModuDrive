@@ -13,6 +13,12 @@ public record FileAccessListResponse(
         UUID ownerId,
         ShareScope scope,
         UUID linkToken,
+        /** Direct rows first, then inherited rows — inherited rows are root-most ancestor first
+         * (see {@code ListFileSharesService}/{@code FileAccessGuard.ancestorDirectories}). The web
+         * layer relies on this order: when the same grantee has no direct row but is listed via
+         * two independent ancestors, it picks the *last* matching inherited row as "nearest
+         * ancestor" (see {@code MemberAccessList}), which is now the actual effective role, not
+         * just a display tie-break — don't reorder these without updating that. */
         List<FileShareResponse> shares,
         /** Directories above this file that are currently "anyone with the link" — this file is
          * reachable through them. Empty unless an ancestor folder is link-shared. */
