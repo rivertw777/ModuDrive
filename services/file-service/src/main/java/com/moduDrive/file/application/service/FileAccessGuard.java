@@ -9,6 +9,7 @@ import com.moduDrive.file.domain.model.FileShare;
 import com.moduDrive.file.domain.model.Namespace.NamespaceId;
 import com.moduDrive.file.domain.model.Permission;
 import com.moduDrive.file.domain.model.Role;
+import com.moduDrive.file.domain.model.ShareScope;
 import com.moduDrive.file.exception.FileExceptionCase;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -80,13 +81,13 @@ class FileAccessGuard {
     }
 
     /** Returns null when the caller has no explicit share on this file or on any directory above
-     * it. A LINK file's {@code linkRole} is deliberately not consulted here — nor is an ancestor
-     * directory's: these are the authenticated, fileId-only routes, which never see the link
-     * token, so there is no way to tell "signed-in stranger who has the link" from "signed-in
-     * stranger who doesn't" — granting on {@code callerId != null} alone would hand every
-     * signed-in user permanent access to anything ever put in LINK mode. Anonymous/token-holding
-     * access to a LINK file (or a descendant of a LINK folder) goes through the public routes
-     * instead, which do check the token. */
+     * it, and neither this file nor any ancestor is LINK-scoped either. A named grant (this
+     * file's own, or failing that the nearest ancestor's) is authoritative and always outranks a
+     * LINK fallback, even a more generous one — same priority as {@link #resolveGrant} below. Only
+     * once no named grant exists anywhere on the path does a self/ancestor LINK scope kick in,
+     * granting a signed-in stranger the same viewer-only access an anonymous link-holder already
+     * gets through the public routes (issue #303) — there is no reason to make a logged-in visitor
+     * use a different, token-bearing URL for the same "anyone with the link" file. */
     private Role resolveRole(File file, UUID callerId) {
         if (callerId == null) {
             return null;
@@ -100,18 +101,38 @@ class FileAccessGuard {
         if (own != null) {
             return own;
         }
-        return foldAncestors(file, callerId);
+        List<File> ancestors = ancestorDirectories(file);
+        Role inherited = foldAncestors(ancestors, callerId);
+        if (inherited != null) {
+            return inherited;
+        }
+        return linkRoleFallback(file, ancestors);
     }
 
     /** The nearest ancestor's grant, not the most generous one across all ancestors — a farther
      * ancestor's more generous role never outranks a nearer ancestor's, matching
      * {@link #resolveGrant}'s own nearest-wins walk. */
-    private Role foldAncestors(File file, UUID callerId) {
-        List<File> ancestors = ancestorDirectories(file);
+    private Role foldAncestors(List<File> ancestors, UUID callerId) {
         for (int i = ancestors.size() - 1; i >= 0; i--) {
             Role role = grantedRole(ancestors.get(i).getId(), callerId);
             if (role != null) {
                 return role;
+            }
+        }
+        return null;
+    }
+
+    /** Last resort once no named grant exists anywhere on the path: this file's own LINK scope,
+     * or failing that, the nearest ancestor directory's. Either way the granted role is always
+     * VIEWER (link sharing never hands out more, see {@code UpdateFileScopeService}), so which
+     * one matched doesn't change the outcome — no nearest-wins tie-break needed here. */
+    private Role linkRoleFallback(File file, List<File> ancestors) {
+        if (file.getAccessScope() == ShareScope.LINK) {
+            return file.getLinkRole();
+        }
+        for (File ancestor : ancestors) {
+            if (ancestor.getAccessScope() == ShareScope.LINK) {
+                return ancestor.getLinkRole();
             }
         }
         return null;
