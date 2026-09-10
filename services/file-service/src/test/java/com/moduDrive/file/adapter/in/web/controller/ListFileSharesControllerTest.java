@@ -5,6 +5,7 @@ import com.moduDrive.common.core.web.GlobalExceptionHandler;
 import com.moduDrive.file.application.port.in.command.ListFileSharesCommand;
 import com.moduDrive.file.application.port.in.usecase.ListFileSharesUseCase;
 import com.moduDrive.file.application.port.in.usecase.ListFileSharesUseCase.FileSharesView;
+import com.moduDrive.file.application.port.in.usecase.ListFileSharesUseCase.FileSharesView.InheritedShare;
 import com.moduDrive.file.domain.model.File;
 import com.moduDrive.file.domain.model.File.*;
 import com.moduDrive.file.domain.model.FileShare;
@@ -70,6 +71,39 @@ class ListFileSharesControllerTest {
                     .andExpect(jsonPath("$.data.shares[0].role").value("EDITOR"))
                     .andExpect(jsonPath("$.data.shares[0].sharedWithEmail").value("river@modudrive.com"))
                     .andExpect(jsonPath("$.data.shares[0].sharedWithName").value("river"));
+        }
+    }
+
+    @Nested
+    @DisplayName("상위 폴더에 미가입 게스트 초대가 있을 때")
+    class WhenAnAncestorHasAPendingGuestInvite {
+
+        @Test
+        @DisplayName("이메일과 함께 상속 항목으로 내려준다 (issue #313 — 예전엔 이 지점에서 NPE로 500)")
+        void returnsInheritedPendingGuestInviteWithItsEmail() throws Exception {
+            File file = File.withId(new FileId(FILE_ID), new FileNamespaceId(UUID.randomUUID()),
+                    new FileName("report.pdf"), new FilePath("/shared-folder"),
+                    new FileOwnerId(UUID.fromString(OWNER_ID)), null, null,
+                    FileStatus.UPLOADED, new FileIsDirectory(false));
+            UUID parentId = UUID.randomUUID();
+            File parentDir = File.withId(new FileId(parentId), new FileNamespaceId(file.getNamespaceId()),
+                    new FileName("shared-folder"), new FilePath("/"),
+                    new FileOwnerId(UUID.fromString(OWNER_ID)), null, null,
+                    FileStatus.UPLOADED, new FileIsDirectory(true));
+            FileShare pendingGuestInvite = FileShare.withId(new FileShareId(UUID.randomUUID()),
+                    new FileShareFileId(parentId), new FileShareOwnerId(UUID.fromString(OWNER_ID)), null,
+                    new FileShareRole(Role.VIEWER), UUID.randomUUID(), "guest@example.com", null);
+            given(listFileSharesUseCase.listFileShares(any(ListFileSharesCommand.class)))
+                    .willReturn(new FileSharesView(file, List.of(),
+                            List.of(new InheritedShare(pendingGuestInvite, parentDir)),
+                            List.of(), Map.of(), false));
+
+            mockMvc.perform(get("/api/v1/files/{fileId}/shares", FILE_ID)
+                            .header("X_USER_ID", OWNER_ID))
+                    .andExpect(status().isOk())
+                    .andExpect(jsonPath("$.data.shares[0].sharedWithEmail").value("guest@example.com"))
+                    .andExpect(jsonPath("$.data.shares[0].sharedWithName").doesNotExist())
+                    .andExpect(jsonPath("$.data.shares[0].inheritedFrom.fileId").value(parentId.toString()));
         }
     }
 

@@ -69,10 +69,11 @@ class ListFileSharesService implements ListFileSharesUseCase {
             if (ancestor.getAccessScope() == ShareScope.LINK) {
                 inheritedLinkSources.add(ancestor);
             }
+            // A pending guest invite (issue #313) belongs here just as much as a claimed member's
+            // grant: PublicFileResolver already lets it reach this whole subtree (see
+            // mintedForTargetOrAnAncestor), so hiding it from the owner would leave them unable to
+            // even find, let alone revoke, an invite that's already granting access.
             for (FileShare ancestorShare : findFileSharePort.findByFileId(new File.FileId(ancestor.getId()))) {
-                if (ancestorShare.getSharedWithUserId() == null) {
-                    continue;
-                }
                 inheritedShares.add(new InheritedShare(ancestorShare, ancestor));
             }
         }
