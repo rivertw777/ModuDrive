@@ -23,7 +23,6 @@ public class File {
     private boolean favorite;
     private LocalDateTime updatedAt;
     private ShareScope accessScope;
-    private UUID linkToken;
     /** Only meaningful while {@code accessScope == LINK}; null otherwise. */
     private Role linkRole;
     /** When this file was sent to trash; null while it is not in the trash. Set alongside
@@ -55,7 +54,6 @@ public class File {
                 ShareScope.RESTRICTED,
                 null,
                 null,
-                null,
                 null
         );
     }
@@ -77,7 +75,6 @@ public class File {
                 false,
                 null,
                 ShareScope.RESTRICTED,
-                null,
                 null,
                 null,
                 null
@@ -106,7 +103,6 @@ public class File {
                 false,
                 null,
                 ShareScope.RESTRICTED,
-                null,
                 null,
                 null,
                 null
@@ -178,20 +174,18 @@ public class File {
         this.deletedAt = deletedAt;
     }
 
-    /** Idempotent in the token: an already-issued token is kept, so re-selecting LINK never
-     * invalidates links already handed out. Rotation would need its own explicit operation.
-     * {@code role} is always re-applied, which is how a viewer link is upgraded to an editor one. */
-    public void enableLinkSharing(UUID token, Role role) {
+    /** {@code role} is always (re-)applied, which is how a viewer link is upgraded to an editor
+     * one — re-selecting LINK on an already-LINK file otherwise changes nothing. Grants no bearer
+     * secret of its own: {@code fileId} is already the capability for "anyone with the link" (see
+     * {@code FileAccessGuard.linkRole} / {@code PublicFileResolver}, issue #303), so this address
+     * never changes across toggling link sharing off/on. */
+    public void enableLinkSharing(Role role) {
         this.accessScope = ShareScope.LINK;
-        if (this.linkToken == null) {
-            this.linkToken = token;
-        }
         this.linkRole = role;
     }
 
     public void disableLinkSharing() {
         this.accessScope = ShareScope.RESTRICTED;
-        this.linkToken = null;
         this.linkRole = null;
     }
 

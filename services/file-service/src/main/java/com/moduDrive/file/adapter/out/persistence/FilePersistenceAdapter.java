@@ -82,7 +82,7 @@ class FilePersistenceAdapter implements
         // deletedAt isn't passed: it is only ever stamped by a purge (markPurged), never by a
         // domain-driven save.
         entity.applyChanges(file.getName(), file.getPath(), file.getCurrentVersionId(), file.getFileSize(),
-                file.getStatus(), file.getAccessScope(), file.getLinkToken(), file.getLinkRole(),
+                file.getStatus(), file.getAccessScope(), file.getLinkRole(),
                 file.getTrashedAt());
 
         // Same conflict, different door: rename/move/restore land here, and none of their callers
@@ -146,12 +146,6 @@ class FilePersistenceAdapter implements
     @Override
     public Optional<File> findById(FileId fileId) {
         return fileRepository.findById(fileId.value())
-                .map(fileMapper::mapFileToDomain);
-    }
-
-    @Override
-    public Optional<File> findByLinkToken(UUID linkToken) {
-        return fileRepository.findByLinkToken(linkToken)
                 .map(fileMapper::mapFileToDomain);
     }
 
@@ -316,11 +310,6 @@ class FilePersistenceAdapter implements
         // calling this, so no DataIntegrityViolationException is expected here.
         if (entity.getSharedWithUserId() == null && fileShare.getSharedWithUserId() != null) {
             entity.applyClaim(fileShare.getSharedWithUserId());
-        }
-        // A claimed guest share whose token the caller (UpdateFileScopeService) just dropped —
-        // link sharing was turned off, so the anonymous capability dies while the member grant stays.
-        if (entity.getToken() != null && fileShare.getToken() == null && fileShare.getSharedWithUserId() != null) {
-            entity.applyRevokeToken();
         }
 
         return fileMapper.mapFileShareToDomain(fileShareRepository.save(entity));

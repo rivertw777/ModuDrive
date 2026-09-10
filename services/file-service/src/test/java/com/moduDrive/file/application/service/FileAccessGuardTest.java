@@ -57,7 +57,7 @@ class FileAccessGuardTest {
 
     private File linkDirectory(UUID id, String path, String name) {
         File dir = directory(id, path, name);
-        dir.enableLinkSharing(UUID.randomUUID(), Role.VIEWER);
+        dir.enableLinkSharing(Role.VIEWER);
         return dir;
     }
 
@@ -209,7 +209,7 @@ class FileAccessGuardTest {
         @DisplayName("파일 자신이 LINK scope면 인증 라우트에서도 뷰어로 접근된다 (issue #303)")
         void ownLinkScopeGrantsViewerOnAuthenticatedRoutes() {
             File linked = file(fileId, "/shared/sub");
-            linked.enableLinkSharing(UUID.randomUUID(), Role.VIEWER);
+            linked.enableLinkSharing(Role.VIEWER);
             given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(fileId), callerId))
                     .willReturn(Optional.empty());
             given(findFilePort.findActiveByNamespaceIdAndPathAndName(new NamespaceId(namespaceId), "/", "shared"))

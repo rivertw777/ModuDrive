@@ -4,14 +4,9 @@ import com.moduDrive.common.core.annotation.UseCase;
 import com.moduDrive.common.core.exception.BusinessException;
 import com.moduDrive.file.application.port.in.command.UpdateFileScopeCommand;
 import com.moduDrive.file.application.port.in.usecase.UpdateFileScopeUseCase;
-import com.moduDrive.file.application.port.out.DeleteFileSharePort;
 import com.moduDrive.file.application.port.out.FindFilePort;
-import com.moduDrive.file.application.port.out.FindFileSharePort;
 import com.moduDrive.file.application.port.out.SaveFilePort;
-import com.moduDrive.file.application.port.out.SaveFileSharePort;
 import com.moduDrive.file.domain.model.File;
-import com.moduDrive.file.domain.model.FileShare;
-import com.moduDrive.file.domain.model.FileShare.FileShareId;
 import com.moduDrive.file.domain.model.Namespace.NamespaceId;
 import com.moduDrive.file.domain.model.Role;
 import com.moduDrive.file.domain.model.ShareScope;
@@ -19,17 +14,12 @@ import com.moduDrive.file.exception.FileExceptionCase;
 import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.UUID;
-
 @UseCase
 @RequiredArgsConstructor
 class UpdateFileScopeService implements UpdateFileScopeUseCase {
 
     private final FindFilePort findFilePort;
     private final SaveFilePort saveFilePort;
-    private final FindFileSharePort findFileSharePort;
-    private final DeleteFileSharePort deleteFileSharePort;
-    private final SaveFileSharePort saveFileSharePort;
     private final FileAccessGuard fileAccessGuard;
 
     @Transactional
@@ -45,26 +35,25 @@ class UpdateFileScopeService implements UpdateFileScopeUseCase {
             if (command.getRole() != Role.VIEWER) {
                 throw new BusinessException(FileExceptionCase.INVALID_LINK_ROLE);
             }
-            // File.enableLinkSharing keeps an existing token, so re-selecting LINK doesn't
-            // silently break links already shared.
-            file.enableLinkSharing(UUID.randomUUID(), command.getRole());
+            file.enableLinkSharing(command.getRole());
         } else {
             // Capture before mutating: an already-RESTRICTED directory re-sent RESTRICTED is a
             // no-op for the directory itself, but without this check the sweep below would still
-            // fire and permanently kill every descendant's own independent link token (new UUID
-            // on re-enable) for a request that changed nothing.
+            // fire for a request that changed nothing.
             boolean wasLinkShared = file.getAccessScope() == ShareScope.LINK;
             file.disableLinkSharing();
-            // Turning sharing off must kill every outstanding anonymous capability, not just the
-            // file's own link token — otherwise a guest invite mailed earlier keeps working forever.
-            revokeGuestCapabilities(command.getFileId());
             // Inheritance is a live computation over ancestor scope (FileAccessGuard), not a
             // stored flag, so restricting this directory alone already cuts off every descendant
             // that was only ever reachable *through* it. But a descendant can also hold its own,
             // independent LINK scope (shared directly, not merely inherited) — that one keeps
-            // working off its own token regardless of what this directory does, unless swept here
-            // too. Restricting a folder must mean "nothing under it is link-public anymore", not
+            // working on its own regardless of what this directory does, unless swept here too.
+            // Restricting a folder must mean "nothing under it is link-public anymore", not
             // "unless some file underneath opted in on its own" — sweep the whole subtree.
+            //
+            // Email invites (FileShare rows) are deliberately never touched here — link sharing
+            // and named invites are independent settings (issue #303's ancestor: the coupling bug
+            // that used to wipe pending/claimed guest invites whenever link sharing was turned
+            // off). Revoking an invite is RevokeFileShareService's job, not this one's.
             if (file.isDirectory() && wasLinkShared) {
                 restrictLinkedDescendants(file);
             }
@@ -80,22 +69,7 @@ class UpdateFileScopeService implements UpdateFileScopeUseCase {
                 continue;
             }
             descendant.disableLinkSharing();
-            revokeGuestCapabilities(new File.FileId(descendant.getId()));
             saveFilePort.saveFile(descendant);
-        }
-    }
-
-    private void revokeGuestCapabilities(File.FileId fileId) {
-        for (FileShare share : findFileSharePort.findByFileId(fileId)) {
-            if (share.getSharedWithUserId() == null) {
-                // An invite nobody has claimed — no member behind it, so the whole row goes.
-                deleteFileSharePort.deleteFileShare(new FileShareId(share.getId()));
-            } else if (share.getToken() != null) {
-                // A claimed guest share: keep the member grant, drop only the anonymous bearer
-                // link so it dies with the scope change like the file's own link token does.
-                share.revokeToken();
-                saveFileSharePort.saveFileShare(share);
-            }
         }
     }
 }

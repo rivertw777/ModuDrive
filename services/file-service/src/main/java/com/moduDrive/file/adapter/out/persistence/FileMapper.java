@@ -49,8 +49,7 @@ class FileMapper {
         if (entity.getAccessScope() == ShareScope.LINK) {
             // Rows written before link_role existed read back as null — the link they handed out
             // was viewer-only at the time, so that is what it stays.
-            file.enableLinkSharing(entity.getLinkToken(),
-                    entity.getLinkRole() != null ? entity.getLinkRole() : Role.VIEWER);
+            file.enableLinkSharing(entity.getLinkRole() != null ? entity.getLinkRole() : Role.VIEWER);
         }
         return file;
     }

@@ -12,7 +12,6 @@ public record FileAccessListResponse(
         UUID fileId,
         UUID ownerId,
         ShareScope scope,
-        UUID linkToken,
         /** Direct rows first, then inherited rows — inherited rows are root-most ancestor first
          * (see {@code ListFileSharesService}/{@code FileAccessGuard.ancestorDirectories}). The web
          * layer relies on this order: when the same grantee has no direct row but is listed via
@@ -26,11 +25,10 @@ public record FileAccessListResponse(
         /** See {@link FileSharesView#hasSharedDescendant()}. */
         boolean hasSharedDescendant
 ) {
-    /** {@code linkToken} is the ancestor's own capability, not this file's — the client builds
-     * this file's public link as {@code /public/{thisFileId}?key={linkToken}} (see
-     * PublicFileResolver.unlocks: any entry nested under the token's root resolves), since this
-     * file has no linkToken of its own while merely inheriting LINK access. */
-    public record InheritedLinkResponse(UUID fileId, String name, Role role, UUID linkToken) {}
+    /** A directory above this file that is currently link-shared — this file's own scope stays
+     * whatever it is, but it's reachable through this ancestor's LINK scope regardless (see
+     * {@code FileAccessGuard.linkRole} / {@code PublicFileResolver}, issue #303). */
+    public record InheritedLinkResponse(UUID fileId, String name, Role role) {}
 
     public static FileAccessListResponse from(FileSharesView view) {
         List<FileShareResponse> shares = new ArrayList<>();
@@ -54,15 +52,13 @@ public record FileAccessListResponse(
         }
 
         List<InheritedLinkResponse> inheritedLinks = view.inheritedLinkSources().stream()
-                .map(source -> new InheritedLinkResponse(
-                        source.getId(), source.getName(), source.getLinkRole(), source.getLinkToken()))
+                .map(source -> new InheritedLinkResponse(source.getId(), source.getName(), source.getLinkRole()))
                 .toList();
 
         return new FileAccessListResponse(
                 view.file().getId(),
                 view.file().getOwnerId(),
                 view.file().getAccessScope(),
-                view.file().getLinkToken(),
                 shares,
                 inheritedLinks,
                 view.hasSharedDescendant()

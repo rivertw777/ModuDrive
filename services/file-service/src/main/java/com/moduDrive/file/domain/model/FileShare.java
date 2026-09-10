@@ -18,12 +18,12 @@ public class FileShare {
      * at yet, only an invited email. Filled in later by {@link #claim} once that email signs up. */
     private UUID sharedWithUserId;
     private Role role;
-    /** The per-invite capability token, minted per guest so each can be revoked without touching
-     * any other share or the file's own {@code linkToken}. Kept alive after {@link #claim} so the
-     * Google-Drive-style {@code /public/{fileId}?key=} link a guest was emailed still resolves
-     * once they sign up, and dropped by {@link #revokeToken} when link sharing is turned off.
-     * Null for a share created directly for an existing member, and for any row read back through
-     * a {@code withId} overload other than the persistence mapper's. */
+    /** The per-invite capability token, minted per guest so each can be revoked independently —
+     * by removing the whole row (see {@code RevokeFileShareService}), never just this field; link
+     * sharing (a separate, independent setting — issue #303) never touches it either. Kept alive
+     * after {@link #claim} so the emailed link still resolves once they sign up. Null for a share
+     * created directly for an existing member, and for any row read back through a {@code withId}
+     * overload other than the persistence mapper's. */
     private UUID token;
     /** Non-null only while a guest share is still unclaimed — the invited address, kept so the
      * owner's share list can display it without a member-service lookup. Cleared by
@@ -101,13 +101,6 @@ public class FileShare {
     public void claim(UUID memberId) {
         this.sharedWithUserId = memberId;
         this.granteeEmail = null;
-    }
-
-    /** Drops the anonymous capability while keeping the row: a claimed guest share becomes a
-     * plain member grant with no bearer link, which is what turning link sharing off must leave
-     * behind (see {@code UpdateFileScopeService.revokeGuestCapabilities}). */
-    public void revokeToken() {
-        this.token = null;
     }
 
     public record FileShareId(UUID value) {}

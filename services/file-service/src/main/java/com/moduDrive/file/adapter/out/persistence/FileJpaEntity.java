@@ -70,9 +70,6 @@ class FileJpaEntity extends BaseTimeEntity {
     @Enumerated(EnumType.STRING)
     private ShareScope accessScope;
 
-    @Column(unique = true)
-    private UUID linkToken;
-
     /** Null while the file is RESTRICTED. */
     @Enumerated(EnumType.STRING)
     private Role linkRole;
@@ -100,14 +97,13 @@ class FileJpaEntity extends BaseTimeEntity {
     }
 
     void applyChanges(String name, String path, UUID currentVersionId, Long fileSize, FileStatus status,
-                      ShareScope accessScope, UUID linkToken, Role linkRole, LocalDateTime trashedAt) {
+                      ShareScope accessScope, Role linkRole, LocalDateTime trashedAt) {
         this.name = name;
         this.path = path;
         this.currentVersionId = currentVersionId;
         this.fileSize = fileSize;
         this.status = status;
         this.accessScope = accessScope;
-        this.linkToken = linkToken;
         this.linkRole = linkRole;
         this.trashedAt = trashedAt;
         this.activeSlotName = activeSlotName(name, status);
