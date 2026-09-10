@@ -45,10 +45,19 @@ public record FileAccessListResponse(
         }
 
         for (var inherited : view.inheritedShares()) {
-            var summary = view.memberSummaries().get(inherited.share().getSharedWithUserId());
-            shares.add(FileShareResponse.inherited(
-                    inherited.share(), summary.email(), summary.name(),
-                    inherited.source().getId(), inherited.source().getName()));
+            var share = inherited.share();
+            // Same pending-guest branch as the direct loop above (issue #313): an ancestor's
+            // unclaimed invite has no member to look up either, and was previously dropped before
+            // ever reaching this method — silently hiding it from the owner's share list even
+            // though the guest could still get in through it.
+            if (share.getSharedWithUserId() == null) {
+                shares.add(FileShareResponse.inherited(share, share.getGranteeEmail(), null,
+                        inherited.source().getId(), inherited.source().getName()));
+            } else {
+                var summary = view.memberSummaries().get(share.getSharedWithUserId());
+                shares.add(FileShareResponse.inherited(share, summary.email(), summary.name(),
+                        inherited.source().getId(), inherited.source().getName()));
+            }
         }
 
         List<InheritedLinkResponse> inheritedLinks = view.inheritedLinkSources().stream()

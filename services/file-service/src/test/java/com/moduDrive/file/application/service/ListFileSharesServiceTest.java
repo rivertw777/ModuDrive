@@ -190,6 +190,27 @@ class ListFileSharesServiceTest {
         }
 
         @Test
+        @DisplayName("조상 폴더에 미가입 게스트 초대가 있으면 상속 목록에 포함한다 (issue #313 — 예전엔 조용히 누락됨)")
+        void includesAPendingGuestAncestorInvite() {
+            FileShare pendingGuestInvite = FileShare.withId(new FileShareId(UUID.randomUUID()),
+                    new FileShareFileId(parentId), new FileShareOwnerId(ownerId), null,
+                    new FileShareRole(Role.VIEWER), UUID.randomUUID(), "guest@example.com", null);
+            given(findFilePort.findById(command.getFileId())).willReturn(Optional.of(file));
+            given(findFileSharePort.findByFileId(command.getFileId())).willReturn(List.of());
+            given(fileAccessGuard.ancestorDirectories(any(File.class))).willReturn(List.of(parentDir));
+            given(findFileSharePort.findByFileId(new FileId(parentId))).willReturn(List.of(pendingGuestInvite));
+
+            FileSharesView result = listFileSharesService.listFileShares(command);
+
+            assertThat(result.inheritedShares()).hasSize(1);
+            assertThat(result.inheritedShares().get(0).share()).isEqualTo(pendingGuestInvite);
+            assertThat(result.inheritedShares().get(0).source()).isEqualTo(parentDir);
+            // No sharedWithUserId to look up — member-service is never consulted for a guest row.
+            assertThat(result.memberSummaries()).isEmpty();
+            then(findMemberByIdPort).shouldHaveNoInteractions();
+        }
+
+        @Test
         void reportsLinkSharedAncestorAsInheritedLinkSource() {
             parentDir.enableLinkSharing(Role.VIEWER);
             given(findFilePort.findById(command.getFileId())).willReturn(Optional.of(file));
