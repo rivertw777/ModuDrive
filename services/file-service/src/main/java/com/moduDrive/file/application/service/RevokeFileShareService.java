@@ -32,8 +32,19 @@ class RevokeFileShareService implements RevokeFileShareUseCase {
                 .orElseThrow(() -> new BusinessException(FileExceptionCase.FILE_NOT_FOUND));
         fileAccessGuard.requireOwner(file, command.getCallerId());
 
+        Optional<FileShare> maybeShare = findFileSharePort.findByShareId(command.getShareId());
+        if (maybeShare.isEmpty()) {
+            // Already gone — most often this file's own ancestor cascade below finishing the job
+            // before a second, redundant revoke for the same person arrives (a client that fires
+            // the direct and ancestor revokes concurrently, rather than waiting for each to land),
+            // or a retry of a call that in fact already succeeded. The caller already owns this
+            // file (checked above) and their desired end state — this share doesn't exist — is
+            // already true, so treat a re-request as success instead of an error nobody can act on.
+            return;
+        }
+
         // A share id from another file must not be revocable by this file's owner.
-        FileShare fileShare = findFileSharePort.findByShareId(command.getShareId())
+        FileShare fileShare = maybeShare
                 .filter(share -> share.getFileId().equals(command.getFileId().value()))
                 .orElseThrow(() -> new BusinessException(FileExceptionCase.FILE_SHARE_NOT_FOUND));
 

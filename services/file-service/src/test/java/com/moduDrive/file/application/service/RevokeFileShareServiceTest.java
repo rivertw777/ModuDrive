@@ -177,6 +177,25 @@ class RevokeFileShareServiceTest {
     }
 
     @Nested
+    @DisplayName("이미 해제된 공유를 다시 해제 요청할 때")
+    class WhenTheShareIsAlreadyGone {
+
+        @Test
+        void succeedsWithoutThrowing() {
+            // A concurrent caller can win the race — e.g. a client that fires the direct and
+            // ancestor revokes together, rather than waiting for the first to land, before the
+            // ancestor cascade added for #310 reaches this row itself. Either way the row is
+            // already gone, so this must not surface as an error.
+            given(findFilePort.findById(command.getFileId())).willReturn(Optional.of(file));
+            given(findFileSharePort.findByShareId(command.getShareId())).willReturn(Optional.empty());
+
+            revokeFileShareService.revokeFileShare(command);
+
+            then(deleteFileSharePort).shouldHaveNoInteractions();
+        }
+    }
+
+    @Nested
     @DisplayName("공유가 다른 파일에 속할 때")
     class WhenShareBelongsToAnotherFile {
 
