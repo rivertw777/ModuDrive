@@ -16,6 +16,14 @@ public interface FindFileSharePort {
 
     Optional<FileShare> findByFileIdAndSharedWithUserId(FileId fileId, UUID sharedWithUserId);
 
+    /** The counterpart of {@link #findByFileIdAndSharedWithUserId} for a guest who hasn't
+     * registered yet, whose only identity on the row is the invited email — see
+     * {@link FileShare#createPending}. Needed wherever a grantee has to be followed across files
+     * (revoking their ancestor grants too, see {@code RevokeFileShareService}), which the
+     * existing {@code existsByFileIdAndGranteeEmail} can't answer: that one only reports
+     * presence, not the row id to act on. */
+    Optional<FileShare> findByFileIdAndGranteeEmail(FileId fileId, String granteeEmail);
+
     /** Resolves a pending guest share's own per-invite token (see {@link FileShare#createPending}) —
      * independent of link sharing (issue #303), which is judged purely by scope, not a token.
      * Empty once the invite is older than the adapter's TTL, even if the row still exists (#211). */

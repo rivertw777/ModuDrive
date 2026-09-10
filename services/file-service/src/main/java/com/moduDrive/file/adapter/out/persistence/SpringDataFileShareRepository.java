@@ -15,6 +15,8 @@ interface SpringDataFileShareRepository extends JpaRepository<FileShareJpaEntity
 
     Optional<FileShareJpaEntity> findByFileIdAndSharedWithUserId(UUID fileId, UUID sharedWithUserId);
 
+    Optional<FileShareJpaEntity> findByFileIdAndGranteeEmail(UUID fileId, String granteeEmail);
+
     /** Excludes a pending guest share whose invite is older than {@code createdAfter} — see
      * {@code FilePersistenceAdapter#findByToken} (#211: this token had no expiry at all). */
     Optional<FileShareJpaEntity> findByTokenAndCreatedAtAfter(UUID token, LocalDateTime createdAfter);
