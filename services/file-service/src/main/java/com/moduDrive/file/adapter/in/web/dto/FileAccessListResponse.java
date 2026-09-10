@@ -1,6 +1,8 @@
 package com.moduDrive.file.adapter.in.web.dto;
 
 import com.moduDrive.file.application.port.in.usecase.ListFileSharesUseCase.FileSharesView;
+import com.moduDrive.file.application.port.out.FindMemberByIdPort.MemberSummary;
+import com.moduDrive.file.domain.model.FileShare;
 import com.moduDrive.file.domain.model.Role;
 import com.moduDrive.file.domain.model.ShareScope;
 
@@ -30,34 +32,34 @@ public record FileAccessListResponse(
      * {@code FileAccessGuard.linkRole} / {@code PublicFileResolver}, issue #303). */
     public record InheritedLinkResponse(UUID fileId, String name, Role role) {}
 
+    /** #313: this branch used to live in the direct loop below only — an ancestor's pending guest
+     * invite fell through to the member lookup instead and would have NPE'd the moment
+     * {@code ListFileSharesService} started including it. One shared branch means the two loops
+     * can't drift apart on this again. */
+    private static final MemberSummary UNKNOWN_MEMBER = new MemberSummary(null, null);
+
+    private static MemberSummary display(FileSharesView view, FileShare share) {
+        UUID memberId = share.getSharedWithUserId();
+        if (memberId == null) {
+            // A pending guest share has no member to look up — its own granteeEmail is the
+            // display email, and it has no member display name.
+            return new MemberSummary(null, share.getGranteeEmail());
+        }
+        return view.memberSummaries().getOrDefault(memberId, UNKNOWN_MEMBER);
+    }
+
     public static FileAccessListResponse from(FileSharesView view) {
         List<FileShareResponse> shares = new ArrayList<>();
 
         for (var share : view.shares()) {
-            // A pending guest share has no member to look up — its own granteeEmail is the
-            // display email, and it has no member display name.
-            if (share.getSharedWithUserId() == null) {
-                shares.add(FileShareResponse.from(share, share.getGranteeEmail(), null));
-            } else {
-                var summary = view.memberSummaries().get(share.getSharedWithUserId());
-                shares.add(FileShareResponse.from(share, summary.email(), summary.name()));
-            }
+            var display = display(view, share);
+            shares.add(FileShareResponse.from(share, display.email(), display.name()));
         }
 
         for (var inherited : view.inheritedShares()) {
-            var share = inherited.share();
-            // Same pending-guest branch as the direct loop above (issue #313): an ancestor's
-            // unclaimed invite has no member to look up either, and was previously dropped before
-            // ever reaching this method — silently hiding it from the owner's share list even
-            // though the guest could still get in through it.
-            if (share.getSharedWithUserId() == null) {
-                shares.add(FileShareResponse.inherited(share, share.getGranteeEmail(), null,
-                        inherited.source().getId(), inherited.source().getName()));
-            } else {
-                var summary = view.memberSummaries().get(share.getSharedWithUserId());
-                shares.add(FileShareResponse.inherited(share, summary.email(), summary.name(),
-                        inherited.source().getId(), inherited.source().getName()));
-            }
+            var display = display(view, inherited.share());
+            shares.add(FileShareResponse.inherited(inherited.share(), display.email(), display.name(),
+                    inherited.source().getId(), inherited.source().getName()));
         }
 
         List<InheritedLinkResponse> inheritedLinks = view.inheritedLinkSources().stream()
