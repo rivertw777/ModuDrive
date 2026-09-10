@@ -184,8 +184,8 @@ class FileAccessGuardTest {
         }
 
         @Test
-        @DisplayName("조상 폴더가 LINK scope여도 인증 라우트로는 상속되지 않는다 (설계 결정 #3)")
-        void ancestorLinkScopeIsNotInheritedOnAuthenticatedRoutes() {
+        @DisplayName("조상 폴더가 LINK scope면 인증 라우트에서도 뷰어로 상속된다 (issue #303)")
+        void ancestorLinkScopeIsInheritedAsViewerOnAuthenticatedRoutes() {
             given(findFilePort.findActiveByNamespaceIdAndPathAndName(new NamespaceId(namespaceId), "/", "shared"))
                     .willReturn(Optional.of(linkDirectory(sharedDirId, "/", "shared")));
             given(findFilePort.findActiveByNamespaceIdAndPathAndName(new NamespaceId(namespaceId), "/shared", "sub"))
@@ -197,11 +197,51 @@ class FileAccessGuardTest {
             given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(subDirId), callerId))
                     .willReturn(Optional.empty());
 
-            Throwable thrown = catchThrowable(() -> fileAccessGuard.requirePermission(f, callerId, Permission.READ));
-
+            assertThatCode(() -> fileAccessGuard.requirePermission(f, callerId, Permission.READ))
+                    .doesNotThrowAnyException();
+            Throwable thrown = catchThrowable(() -> fileAccessGuard.requirePermission(f, callerId, Permission.RENAME));
             assertThat(thrown).isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getExceptionCase())
                     .isEqualTo(FileExceptionCase.FILE_ACCESS_DENIED);
+        }
+
+        @Test
+        @DisplayName("파일 자신이 LINK scope면 인증 라우트에서도 뷰어로 접근된다 (issue #303)")
+        void ownLinkScopeGrantsViewerOnAuthenticatedRoutes() {
+            File linked = file(fileId, "/shared/sub");
+            linked.enableLinkSharing(UUID.randomUUID(), Role.VIEWER);
+            given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(fileId), callerId))
+                    .willReturn(Optional.empty());
+            given(findFilePort.findActiveByNamespaceIdAndPathAndName(new NamespaceId(namespaceId), "/", "shared"))
+                    .willReturn(Optional.of(directory(sharedDirId, "/", "shared")));
+            given(findFilePort.findActiveByNamespaceIdAndPathAndName(new NamespaceId(namespaceId), "/shared", "sub"))
+                    .willReturn(Optional.of(directory(subDirId, "/shared", "sub")));
+            given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(sharedDirId), callerId))
+                    .willReturn(Optional.empty());
+            given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(subDirId), callerId))
+                    .willReturn(Optional.empty());
+
+            assertThatCode(() -> fileAccessGuard.requirePermission(linked, callerId, Permission.READ))
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("조상이 LINK scope여도, 어딘가에 이름 붙은 grant가 있으면 그게 이긴다")
+        void aNamedGrantOutranksAnAncestorsLinkScope() {
+            given(findFilePort.findActiveByNamespaceIdAndPathAndName(new NamespaceId(namespaceId), "/", "shared"))
+                    .willReturn(Optional.of(linkDirectory(sharedDirId, "/", "shared")));
+            given(findFilePort.findActiveByNamespaceIdAndPathAndName(new NamespaceId(namespaceId), "/shared", "sub"))
+                    .willReturn(Optional.of(directory(subDirId, "/shared", "sub")));
+            given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(fileId), callerId))
+                    .willReturn(Optional.empty());
+            // subDir's own named grant is nearer than the LINK-scoped grandparent, so foldAncestors
+            // returns on this hit without ever consulting sharedDir — RENAME must pass. A LINK
+            // fallback capped at VIEWER would wrongly deny this.
+            given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(subDirId), callerId))
+                    .willReturn(Optional.of(grant(subDirId, callerId, Role.EDITOR)));
+
+            assertThatCode(() -> fileAccessGuard.requirePermission(f, callerId, Permission.RENAME))
+                    .doesNotThrowAnyException();
         }
 
         @Test
