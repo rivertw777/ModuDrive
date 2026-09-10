@@ -32,8 +32,9 @@ class PublicDownloadFileService implements PublicDownloadFileUseCase {
             BlockAssembler.requireWithinInlinePreviewLimit(version.blockCount(), storageProperties.getBlockSize());
         }
         String scope = quotaScope(command);
-        // Anonymous fetches meter per link key: every recipient of one shared link draws on the
-        // same window, but a stranger's traffic can't spend the owner's own (user-scoped) quota.
+        // Anonymous fetches meter per file: every visitor who reaches it — however they got in —
+        // draws on the same window, but a stranger's traffic can't spend the owner's own
+        // (user-scoped) quota.
         downloadQuotaPort.checkWithinQuota(scope, version.s3Path());
         List<byte[]> blocks = retrieveBlocksPort.retrieveBlocks(version.s3Path(), version.blockCount());
         byte[] assembled = BlockAssembler.assemble(blocks);
@@ -58,24 +59,20 @@ class PublicDownloadFileService implements PublicDownloadFileUseCase {
         return getFileVersionPort.getPublicVersion(command.getFileId(), command.getKey());
     }
 
-    /** Canonical form of whichever identity this anonymous fetch's quota draws on — re-casing or
-     * dropping leading zeros (both of which {@code UUID.fromString} accepts and file-service
-     * authorizes identically) can't mint a fresh bucket. {@code locate()} has already
-     * round-tripped both {@code fileId} and a present {@code key} through file-service, so
-     * whichever one this uses is a well-formed UUID by the time this runs.
-     * <p>
-     * A guest invite token is one person's own capability, so it's the natural meter. A keyless
-     * request has no such per-person handle at all — LINK scope has been judged by {@code fileId}
-     * alone since the link-token was retired (issue #303) — so it falls back to the file itself,
-     * meaning every anonymous visitor of one link-shared file shares the same window (issue #312:
-     * this fallback used to be missing entirely, NPEing on the {@code null} key instead). The
-     * {@code link:}/{@code invite:} prefixes just keep the two scope spaces visibly distinct in
-     * Redis; {@code s3Path} is already folded into the cache key alongside this, so a raw UUID
-     * collision between them would be harmless anyway. */
+    /** Always the file itself, never {@code key} — only file-service knows which grant actually
+     * authorized a given request, and for a LINK-scoped file it never even looks at {@code key}
+     * (see {@code PublicFileResolver.resolve}, which short-circuits on {@code linkRole} before
+     * {@code matchesGuestInvite} is evaluated). Trusting a present {@code key} as a per-person
+     * meter would let anyone mint a fresh, always-empty bucket on every request just by attaching
+     * a random well-formed UUID as {@code ?key=} — the other half of issue #312's root cause (the
+     * first half was the plain NPE on a missing key; this is what patching only that half would
+     * have left standing). Metering by {@code fileId} instead is unforgeable: every anonymous
+     * visitor of one file, however they got in, draws on the same window. {@code locate()} has
+     * already round-tripped {@code fileId} through file-service by the time this runs, so it is a
+     * well-formed UUID; re-casing or dropping leading zeros — both of which {@code UUID.fromString}
+     * accepts and file-service authorizes identically — can't mint a second bucket for the same
+     * file either. */
     private static String quotaScope(PublicDownloadFileCommand command) {
-        String key = command.getKey();
-        return (key == null || key.isBlank())
-                ? "link:" + UUID.fromString(command.getFileId())
-                : "invite:" + UUID.fromString(key);
+        return "public:" + UUID.fromString(command.getFileId());
     }
 }

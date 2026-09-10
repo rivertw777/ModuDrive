@@ -9,9 +9,11 @@ public interface DownloadQuotaPort {
      * file would be permanently undownloadable.
      *
      * <p>{@code scope} confines a counter to one actor: the caller's user id for an authenticated
-     * download, the link token for an anonymous one. Without it an anonymous holder of a share
-     * link could burn the counter and lock the owner out of their own file; two different links to
-     * the same file therefore meter independently, matching Drive's per-link model.
+     * download, the file itself for an anonymous one (see {@code PublicDownloadFileService.quotaScope} —
+     * file-service alone knows which grant actually authorized an anonymous request, so the file
+     * is the only unforgeable handle available here). Without it an anonymous visitor could burn
+     * the counter and lock the owner out of their own file; every anonymous visitor of one file
+     * therefore meters together, one window per file.
      *
      * <p>{@code fileKey} is the storage path of a single version, so uploading a new version starts
      * a fresh window — a new version is new bytes.
