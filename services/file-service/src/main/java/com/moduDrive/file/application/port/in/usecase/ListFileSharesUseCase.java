@@ -23,7 +23,11 @@ public interface ListFileSharesUseCase {
      * its own grants plus whatever a directory above it grants:
      * <ul>
      *   <li>{@code inheritedShares} — member grants on an ancestor directory, each tagged with
-     *       the directory they come from. Excludes anyone already in {@code shares} directly.</li>
+     *       the directory they come from. One row per (ancestor, grantee) pair, never collapsed —
+     *       includes a grantee who also has a row in {@code shares} directly (see
+     *       ListFileSharesService for why: a full revoke needs every one of those rows visible).
+     *       FileAccessGuard.resolveRole ignores these entirely once a direct grant exists, but
+     *       this view still needs to show them for the owner to actually revoke them.</li>
      *   <li>{@code inheritedLinkSources} — ancestor directories currently in LINK scope, i.e.
      *       "anyone with the link" reaches this file through them. Restricting this file means
      *       turning their link off (there is no per-item inheritance break).</li>
