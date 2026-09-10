@@ -55,6 +55,12 @@ class PublicDownloadFileServiceTest {
         return new PublicDownloadFileCommand(fileId, key, true);
     }
 
+    /** LINK scope has been judged by fileId alone with no token at all since #303 — this is what
+     * every anonymous visitor of a link-shared file actually sends. */
+    private PublicDownloadFileCommand keylessCommand() {
+        return new PublicDownloadFileCommand(fileId, null);
+    }
+
     @Nested
     @DisplayName("fileId/key가 공개 파일을 가리킬 때")
     class WhenKeyResolves {
@@ -115,8 +121,8 @@ class PublicDownloadFileServiceTest {
 
             publicDownloadFileService.downloadPublicStream(command(), new ByteArrayOutputStream());
 
-            then(downloadQuotaPort).should().checkWithinQuota(key, "files/abc/xyz");
-            then(downloadQuotaPort).should().recordUsage(key, "files/abc/xyz", 300L);
+            then(downloadQuotaPort).should().checkWithinQuota("invite:" + key, "files/abc/xyz");
+            then(downloadQuotaPort).should().recordUsage("invite:" + key, "files/abc/xyz", 300L);
         }
 
         @Test
@@ -131,7 +137,7 @@ class PublicDownloadFileServiceTest {
             catchThrowable(() -> publicDownloadFileService.downloadPublicStream(
                     command(), new ByteArrayOutputStream()));
 
-            then(downloadQuotaPort).should().recordUsage(key, "files/abc/xyz", 128L);
+            then(downloadQuotaPort).should().recordUsage("invite:" + key, "files/abc/xyz", 128L);
         }
 
         @Test
@@ -165,8 +171,8 @@ class PublicDownloadFileServiceTest {
 
             publicDownloadFileService.downloadPublic(previewCommand());
 
-            then(downloadQuotaPort).should().checkWithinQuota(key, "files/abc/xyz");
-            then(downloadQuotaPort).should().recordUsage(key, "files/abc/xyz", 4L);
+            then(downloadQuotaPort).should().checkWithinQuota("invite:" + key, "files/abc/xyz");
+            then(downloadQuotaPort).should().recordUsage("invite:" + key, "files/abc/xyz", 4L);
         }
     }
 
@@ -184,6 +190,40 @@ class PublicDownloadFileServiceTest {
             byte[] result = publicDownloadFileService.downloadPublic(command());
 
             assertThat(new String(result)).isEqualTo("hello world");
+        }
+    }
+
+    @Nested
+    @DisplayName("key 없이(LINK 스코프) 공개 다운로드를 요청할 때 (issue #312 — 예전엔 여기서 NPE로 500)")
+    class WhenKeyIsAbsentBecauseTheFileIsLinkShared {
+
+        @Test
+        void meterQuotaByFileIdInsteadOfCrashing() {
+            given(getFileVersionPort.getPublicVersion(fileId, null))
+                    .willReturn(new GetFileVersionPort.VersionLocation("files/abc/xyz", 2));
+            given(retrieveBlocksPort.retrieveBlocks(anyString(), anyInt()))
+                    .willReturn(List.of("hello ".getBytes(), "world".getBytes()));
+
+            byte[] result = publicDownloadFileService.downloadPublic(keylessCommand());
+
+            assertThat(new String(result)).isEqualTo("hello world");
+            // Every anonymous visitor of this link-shared file has no invite token of their own to
+            // meter by, so they all draw on the same, file-scoped window instead.
+            then(downloadQuotaPort).should().checkWithinQuota("link:" + fileId, "files/abc/xyz");
+            then(downloadQuotaPort).should().recordUsage(eq("link:" + fileId), eq("files/abc/xyz"), anyLong());
+        }
+
+        @Test
+        void alsoWorksOnTheStreamingPath() {
+            given(getFileVersionPort.getPublicVersion(fileId, null))
+                    .willReturn(new GetFileVersionPort.VersionLocation("files/abc/xyz", 2));
+            willAnswer(inv -> { ((OutputStream) inv.getArgument(2)).write(new byte[300]); return null; })
+                    .given(retrieveBlocksPort).streamBlocks(anyString(), anyInt(), any());
+
+            publicDownloadFileService.downloadPublicStream(keylessCommand(), new ByteArrayOutputStream());
+
+            then(downloadQuotaPort).should().checkWithinQuota("link:" + fileId, "files/abc/xyz");
+            then(downloadQuotaPort).should().recordUsage("link:" + fileId, "files/abc/xyz", 300L);
         }
     }
 
