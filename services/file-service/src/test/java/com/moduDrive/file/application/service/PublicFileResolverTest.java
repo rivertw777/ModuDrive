@@ -98,7 +98,7 @@ class PublicFileResolverTest {
             File child = file("a.txt", "/shared", false, FileStatus.UPLOADED);
             given(findFilePort.findByNamespaceIdAndPath(any(), eq("/shared"))).willReturn(List.of(child));
 
-            assertThat(publicFileResolver.resolveChildren(folder.getId().toString()))
+            assertThat(publicFileResolver.resolveChildren(folder.getId().toString(), null))
                     .containsExactly(child);
         }
 
@@ -112,7 +112,7 @@ class PublicFileResolverTest {
             File trashed = file("b.txt", "/shared", false, FileStatus.TRASHED);
             given(findFilePort.findByNamespaceIdAndPath(any(), eq("/shared"))).willReturn(List.of(child, trashed));
 
-            assertThat(publicFileResolver.resolveChildren(folder.getId().toString())).containsExactly(child);
+            assertThat(publicFileResolver.resolveChildren(folder.getId().toString(), null)).containsExactly(child);
         }
 
         @Test
@@ -121,19 +121,21 @@ class PublicFileResolverTest {
             File f = file("report.pdf", "/1", false, FileStatus.UPLOADED);
             givenFound(f);
 
-            assertNotFound(catchThrowable(() -> publicFileResolver.resolveChildren(f.getId().toString())));
+            assertNotFound(catchThrowable(() -> publicFileResolver.resolveChildren(f.getId().toString(), null)));
             // isDirectory() is checked first (short-circuits &&), so scope is never even asked.
             then(fileAccessGuard).shouldHaveNoInteractions();
         }
 
         @Test
-        @DisplayName("scope==LINK가 아닌 디렉토리는 자식 목록 조회가 거부된다")
-        void rejectsResolveChildrenWhenTheDirectoryIsNotLinkScoped() {
+        @DisplayName("scope==LINK가 아니고 게스트 초대도 없는 디렉토리는 자식 목록 조회가 거부된다")
+        void rejectsResolveChildrenWhenTheDirectoryIsNotLinkScopedNorInvited() {
             File folder = file("shared", "/", true, FileStatus.UPLOADED);
             givenFound(folder);
             given(fileAccessGuard.linkRole(folder)).willReturn(null);
 
-            assertNotFound(catchThrowable(() -> publicFileResolver.resolveChildren(folder.getId().toString())));
+            // No key at all: matchesGuestInvite short-circuits on parseUuid before ever consulting
+            // fileAccessGuard, same as the "unknown/malformed key" cases in resolve().
+            assertNotFound(catchThrowable(() -> publicFileResolver.resolveChildren(folder.getId().toString(), null)));
         }
     }
 
@@ -152,26 +154,59 @@ class PublicFileResolverTest {
         }
 
         @Test
-        @DisplayName("게스트 토큰은 초대된 항목만 열 뿐, 다른 항목(가령 부모 폴더 자신)은 열지 못한다")
-        void doesNotUnlockAnEntryOtherThanTheOneItWasMintedFor() {
+        @DisplayName("폴더에 발급된 토큰은 그 안의 파일도 열어준다 (폴더 공유의 상속과 동일)")
+        void unlocksAFileNestedUnderTheInvitedFolder() {
             File folder = file("shared", "/", true, FileStatus.UPLOADED);
             File child = file("a.txt", "/shared", false, FileStatus.UPLOADED);
             givenFound(child);
-            // Token was minted for the folder, not this child.
+            given(fileAccessGuard.linkRole(child)).willReturn(null);
+            given(fileAccessGuard.ancestorDirectories(child)).willReturn(List.of(folder));
+            // Token was minted for the folder, not this child — reached through inheritance.
             given(findFileSharePort.findByToken(key)).willReturn(Optional.of(guestShareOn(folder)));
 
-            assertNotFound(catchThrowable(() -> publicFileResolver.resolve(child.getId().toString(), key.toString())));
+            assertThat(publicFileResolver.resolve(child.getId().toString(), key.toString()).getName())
+                    .isEqualTo("a.txt");
         }
 
         @Test
-        @DisplayName("게스트 토큰으로는 폴더 목록 조회 자체가 불가 (key 파라미터 자체가 없음)")
-        void cannotListChildrenWithAGuestToken() {
+        @DisplayName("다른 항목에 발급된 토큰으로는 무관한 항목을 열지 못한다")
+        void doesNotUnlockAnUnrelatedEntry() {
+            File other = file("private.txt", "/1", false, FileStatus.UPLOADED);
+            File unrelated = file("a.txt", "/2", false, FileStatus.UPLOADED);
+            givenFound(unrelated);
+            given(fileAccessGuard.linkRole(unrelated)).willReturn(null);
+            given(fileAccessGuard.ancestorDirectories(unrelated)).willReturn(List.of());
+            // Token was minted for a file that isn't an ancestor of (or the same as) the target.
+            given(findFileSharePort.findByToken(key)).willReturn(Optional.of(guestShareOn(other)));
+
+            assertNotFound(catchThrowable(() -> publicFileResolver.resolve(unrelated.getId().toString(), key.toString())));
+        }
+
+        @Test
+        @DisplayName("게스트 토큰이 폴더 자신 또는 조상 폴더에 발급되어 있으면 폴더 목록도 조회할 수 있다")
+        void listsChildrenWhenTheGuestTokenReachesTheDirectory() {
             File folder = file("shared", "/", true, FileStatus.UPLOADED);
             givenFound(folder);
             given(fileAccessGuard.linkRole(folder)).willReturn(null);
+            given(findFileSharePort.findByToken(key)).willReturn(Optional.of(guestShareOn(folder)));
+            File child = file("a.txt", "/shared", false, FileStatus.UPLOADED);
+            given(findFilePort.findByNamespaceIdAndPath(any(), eq("/shared"))).willReturn(List.of(child));
 
-            assertNotFound(catchThrowable(() -> publicFileResolver.resolveChildren(folder.getId().toString())));
-            then(findFileSharePort).shouldHaveNoInteractions();
+            assertThat(publicFileResolver.resolveChildren(folder.getId().toString(), key.toString()))
+                    .containsExactly(child);
+        }
+
+        @Test
+        @DisplayName("무관한 항목에 발급된 게스트 토큰으로는 폴더 목록을 조회할 수 없다")
+        void cannotListChildrenWithAnUnrelatedGuestToken() {
+            File folder = file("shared", "/", true, FileStatus.UPLOADED);
+            File other = file("private.txt", "/1", false, FileStatus.UPLOADED);
+            givenFound(folder);
+            given(fileAccessGuard.linkRole(folder)).willReturn(null);
+            given(fileAccessGuard.ancestorDirectories(folder)).willReturn(List.of());
+            given(findFileSharePort.findByToken(key)).willReturn(Optional.of(guestShareOn(other)));
+
+            assertNotFound(catchThrowable(() -> publicFileResolver.resolveChildren(folder.getId().toString(), key.toString())));
         }
     }
 
