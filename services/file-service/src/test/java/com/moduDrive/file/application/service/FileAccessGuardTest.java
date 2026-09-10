@@ -136,7 +136,7 @@ class FileAccessGuardTest {
             // lenient(): these ancestor stubs must never actually be consulted — the direct grant
             // short-circuits before ancestorDirectories() is even called. A more generous ancestor
             // (EDITOR) is wired in specifically so this test would fail on the old
-            // moreGenerous(direct, ancestors) behavior (which would have let RENAME through).
+            // fold-all-ancestors-together behavior (which would have let RENAME through).
             lenient().when(findFilePort.findActiveByNamespaceIdAndPathAndName(new NamespaceId(namespaceId), "/", "shared"))
                     .thenReturn(Optional.of(directory(sharedDirId, "/", "shared")));
             lenient().when(findFilePort.findActiveByNamespaceIdAndPathAndName(new NamespaceId(namespaceId), "/shared", "sub"))
@@ -158,18 +158,29 @@ class FileAccessGuardTest {
         }
 
         @Test
-        @DisplayName("직접 grant가 없으면 여러 조상 중 가장 관대한 role이 적용된다")
-        void takesTheMostGenerousRoleAcrossMultipleAncestorsWhenThereIsNoDirectGrant() {
+        @DisplayName("직접 grant가 없으면 가장 가까운 조상의 role이 적용된다 (더 관대해도 먼 조상은 지지 않는다)")
+        void takesTheNearestAncestorsRoleEvenWhenAFartherOneIsMoreGenerous() {
             ancestorsExist();
             given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(fileId), callerId))
                     .willReturn(Optional.empty());
-            given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(sharedDirId), callerId))
-                    .willReturn(Optional.of(grant(sharedDirId, callerId, Role.EDITOR)));
+            // Never actually consulted — foldAncestors returns on the nearest hit (subDirId)
+            // before reaching this farther, more generous one. Wired in specifically so this test
+            // would fail on the old most-generous-wins behavior.
+            lenient().when(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(sharedDirId), callerId))
+                    .thenReturn(Optional.of(grant(sharedDirId, callerId, Role.EDITOR)));
             given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(subDirId), callerId))
                     .willReturn(Optional.of(grant(subDirId, callerId, Role.VIEWER)));
 
-            assertThatCode(() -> fileAccessGuard.requirePermission(f, callerId, Permission.RENAME))
+            // Pins the resolved role at exactly VIEWER (the nearer ancestor's), not just "not
+            // EDITOR" — READ must still pass or a foldAncestors that returned null would also
+            // make the RENAME assertion below pass vacuously.
+            assertThatCode(() -> fileAccessGuard.requirePermission(f, callerId, Permission.READ))
                     .doesNotThrowAnyException();
+            Throwable thrown = catchThrowable(() -> fileAccessGuard.requirePermission(f, callerId, Permission.RENAME));
+
+            assertThat(thrown).isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getExceptionCase())
+                    .isEqualTo(FileExceptionCase.FILE_ACCESS_DENIED);
         }
 
         @Test
@@ -248,35 +259,37 @@ class FileAccessGuardTest {
         private final UUID grandparentId = UUID.randomUUID();
         private final UUID directoryId = UUID.randomUUID();
         // /grandparent/directory — directory 자신도 grant를 가질 수 있고, 그 위 grandparent도
-        // 별도로 가질 수 있다. directory의 자식 입장에선 둘 다 "조상"일 뿐이라 direct-wins
-        // short-circuit이 적용되지 않는다 (resolveRole과 다른 지점).
+        // 별도로 가질 수 있다. directory 입장에선 자신이 곧 "가장 가까운 조상"이라, 관대함과
+        // 무관하게 grandparent보다 항상 이긴다 (resolveRole의 direct-wins와 동일한 패턴).
         private final File directory = directory(directoryId, "/grandparent", "directory");
 
+        // lenient(): unused in directorysOwnGrantWinsOverAMoreGenerousGrandparentGrant, where
+        // directory's own grant short-circuits before ancestorDirectories() is even called.
         private void grandparentExists() {
-            given(findFilePort.findActiveByNamespaceIdAndPathAndName(new NamespaceId(namespaceId), "/", "grandparent"))
-                    .willReturn(Optional.of(directory(grandparentId, "/", "grandparent")));
+            lenient().when(findFilePort.findActiveByNamespaceIdAndPathAndName(new NamespaceId(namespaceId), "/", "grandparent"))
+                    .thenReturn(Optional.of(directory(grandparentId, "/", "grandparent")));
         }
 
         @Test
-        @DisplayName("directory 자신의 grant가 약해도, 더 관대한 조상(grandparent) grant가 이긴다 — resolveRole과 달리 short-circuit 없음")
-        void foldsTheDirectorysOwnGrantWithItsAncestorsInstead() {
+        @DisplayName("directory 자신의 grant가 grandparent보다 약해도, 더 가까운 자신의 grant가 이긴다")
+        void directorysOwnGrantWinsOverAMoreGenerousGrandparentGrant() {
             grandparentExists();
             given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(directoryId), callerId))
                     .willReturn(Optional.of(grant(directoryId, callerId, Role.VIEWER)));
-            given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(grandparentId), callerId))
-                    .willReturn(Optional.of(grant(grandparentId, callerId, Role.EDITOR)));
+            lenient().when(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(grandparentId), callerId))
+                    .thenReturn(Optional.of(grant(grandparentId, callerId, Role.EDITOR)));
 
-            assertThat(fileAccessGuard.inheritableRole(directory, callerId)).isEqualTo(Role.EDITOR);
+            assertThat(fileAccessGuard.inheritableRole(directory, callerId)).isEqualTo(Role.VIEWER);
         }
 
         @Test
-        @DisplayName("directory 자신의 grant가 조상보다 관대하면 그게 적용된다")
-        void directorysOwnGrantWinsWhenItIsTheMoreGenerousOne() {
+        @DisplayName("directory 자신에 grant가 없으면 grandparent의 grant로 폴백한다")
+        void fallsBackToTheGrandparentsGrantWhenDirectoryHasNoneOfItsOwn() {
             grandparentExists();
             given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(directoryId), callerId))
-                    .willReturn(Optional.of(grant(directoryId, callerId, Role.EDITOR)));
+                    .willReturn(Optional.empty());
             given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(grandparentId), callerId))
-                    .willReturn(Optional.of(grant(grandparentId, callerId, Role.VIEWER)));
+                    .willReturn(Optional.of(grant(grandparentId, callerId, Role.EDITOR)));
 
             assertThat(fileAccessGuard.inheritableRole(directory, callerId)).isEqualTo(Role.EDITOR);
         }
