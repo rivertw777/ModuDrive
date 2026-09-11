@@ -7,15 +7,21 @@ import com.moduDrive.file.application.port.in.usecase.RevokeFileShareUseCase;
 import com.moduDrive.file.application.port.out.DeleteFileSharePort;
 import com.moduDrive.file.application.port.out.FindFilePort;
 import com.moduDrive.file.application.port.out.FindFileSharePort;
+import com.moduDrive.file.application.port.out.FindMemberByIdPort;
 import com.moduDrive.file.domain.model.File;
 import com.moduDrive.file.domain.model.File.FileId;
 import com.moduDrive.file.domain.model.FileShare;
 import com.moduDrive.file.exception.FileExceptionCase;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
+@Slf4j
 @UseCase
 @RequiredArgsConstructor
 class RevokeFileShareService implements RevokeFileShareUseCase {
@@ -23,6 +29,7 @@ class RevokeFileShareService implements RevokeFileShareUseCase {
     private final FindFilePort findFilePort;
     private final FindFileSharePort findFileSharePort;
     private final DeleteFileSharePort deleteFileSharePort;
+    private final FindMemberByIdPort findMemberByIdPort;
     private final FileAccessGuard fileAccessGuard;
 
     @Transactional
@@ -60,17 +67,39 @@ class RevokeFileShareService implements RevokeFileShareUseCase {
      * the spec's 공유 권한 삭제 rule asks for. Every ancestor is swept, not just the nearest, since
      * any one of them left behind re-grants access on its own. */
     private void revokeAncestorGrants(File file, FileShare revoked) {
+        UUID granteeId = revoked.getSharedWithUserId();
+        List<FileId> missed = new ArrayList<>();
         for (File ancestor : fileAccessGuard.ancestorDirectories(file)) {
-            findGranteeShare(new FileId(ancestor.getId()), revoked)
-                    .ifPresent(grant -> deleteFileSharePort.deleteFileShare(new FileShare.FileShareId(grant.getId())));
+            FileId ancestorId = new FileId(ancestor.getId());
+            Optional<FileShare> found = findGranteeShareByOwnIdentity(ancestorId, revoked);
+            if (found.isPresent()) {
+                deleteFileSharePort.deleteFileShare(new FileShare.FileShareId(found.get().getId()));
+            } else if (granteeId != null) {
+                // A pending-row revoke (granteeId == null) has no other identity to fall back to,
+                // so it has nothing to add to this list — only a member-id miss can still turn
+                // into an email-based hit below.
+                missed.add(ancestorId);
+            }
         }
+        if (missed.isEmpty()) {
+            return;
+        }
+        // One member-service round trip per revoke at most, not one per missed ancestor: the
+        // email for this fallback can't come from `revoked` itself ({@link FileShare#claim}
+        // always clears granteeEmail once a row is claimed, issue #323), and a revoke with
+        // several ancestors that simply don't grant this person anything — the common case — must
+        // not pay for a Feign call per level inside this open transaction.
+        resolveEmail(granteeId).ifPresent(email -> missed.forEach(ancestorId ->
+                findFileSharePort.findByFileIdAndGranteeEmail(ancestorId, email)
+                        .ifPresent(grant -> deleteFileSharePort.deleteFileShare(new FileShare.FileShareId(grant.getId())))));
     }
 
-    /** The same grantee's share on another file. A claimed share points at a member id; a guest
-     * invite still waiting to be claimed carries only the invited email (see
-     * {@link FileShare#createPending}) — match on whichever identity this row actually has, so a
-     * pending guest's ancestor invites are revoked alongside a registered member's. */
-    private Optional<FileShare> findGranteeShare(FileId ancestorId, FileShare revoked) {
+    /** The same grantee's ancestor share, found without ever leaving this service: by member id
+     * for a claimed grant, or by the revoked row's own email for a still-unclaimed guest invite.
+     * Empty here doesn't mean "no ancestor grant" — a member-id miss still has the email fallback
+     * in {@link #revokeAncestorGrants} to try, hoisted out of this method so it runs at most once
+     * per revoke instead of once per ancestor. */
+    private Optional<FileShare> findGranteeShareByOwnIdentity(FileId ancestorId, FileShare revoked) {
         if (revoked.getSharedWithUserId() != null) {
             return findFileSharePort.findByFileIdAndSharedWithUserId(ancestorId, revoked.getSharedWithUserId());
         }
@@ -78,5 +107,17 @@ class RevokeFileShareService implements RevokeFileShareUseCase {
             return findFileSharePort.findByFileIdAndGranteeEmail(ancestorId, revoked.getGranteeEmail());
         }
         return Optional.empty();
+    }
+
+    /** Best-effort: a member-service hiccup must not block the revoke itself, only the
+     * email-based half of the ancestor sweep above — same degrade-on-failure pattern as
+     * {@code ShareFileService.resolveGranter}. */
+    private Optional<String> resolveEmail(UUID memberId) {
+        try {
+            return Optional.ofNullable(findMemberByIdPort.findMemberById(memberId).email());
+        } catch (RuntimeException e) {
+            log.warn("Could not resolve email for {} while sweeping ancestor grants for revoke", memberId, e);
+            return Optional.empty();
+        }
     }
 }
