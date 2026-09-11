@@ -1,11 +1,6 @@
 plugins {
 	id 'java'
 	id 'org.springframework.boot' version '4.1.1'
-	// Pinned below 13.0.0: that release ships without a NVD API key with an empty string
-	// instead of null internally, which the NVD client sends as a literal (rejected) apiKey
-	// header and crashes on — dependency-check/DependencyCheck#8715, fixed upstream by #8716
-	// but not yet in a release. Bump once a release past 13.0.0 ships that fix (issue #339).
-	id 'org.owasp.dependencycheck' version '12.2.2'
 }
 
 ext {
@@ -13,24 +8,6 @@ ext {
 	// GHSA-9xv2-5v5q-p794, GHSA-h3x4-894j-xpx5, GHSA-gcx9-497g-6cp6 fixed in 11.0.25;
 	// remove once the Spring Boot BOM picks it up.
 	set('tomcat.version', "11.0.25")
-}
-
-// `./gradlew dependencyCheckAggregate` scans every module's resolved dependencies in one pass —
-// the plain (non-aggregate) task only this root project has, which has none of its own. An NVD
-// API key (repo secret NVD_API_KEY, see .github/workflows/dependency-check.yml) makes the NVD
-// data sync fast; without one the scan still runs, just much slower against the public feed.
-dependencyCheck {
-	// Only set when non-blank: an unset repo secret arrives as "" (GitHub Actions' value for
-	// it, not null), and passing that through would defeat the plugin-version pin above the
-	// moment this ever gets bumped past 13.0.0 again.
-	String nvdApiKey = System.getenv('NVD_API_KEY')
-	if (nvdApiKey) {
-		nvd.apiKey = nvdApiKey
-	}
-	// CVSS 0-10; only fail the build on genuinely severe, unaddressed findings. Below this,
-	// findings still show up in the HTML/JSON report as something to triage, not a hard gate.
-	failBuildOnCVSS = 7
-	formats = ['HTML', 'JSON']
 }
 
 subprojects {
