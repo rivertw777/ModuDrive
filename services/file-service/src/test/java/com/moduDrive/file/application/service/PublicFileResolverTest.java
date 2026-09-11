@@ -83,7 +83,7 @@ class PublicFileResolverTest {
             File f = file("report.pdf", "/1", false, FileStatus.UPLOADED);
             givenFound(f);
             givenNoAncestors(f);
-            given(fileAccessGuard.linkRole(f, List.of())).willReturn(Role.VIEWER);
+            given(fileAccessGuard.linkRoleFallback(f, List.of())).willReturn(Role.VIEWER);
 
             assertThat(publicFileResolver.resolve(f.getId().toString(), null).getName())
                     .isEqualTo("report.pdf");
@@ -95,7 +95,7 @@ class PublicFileResolverTest {
             File f = file("report.pdf", "/shared", false, FileStatus.UPLOADED);
             givenFound(f);
             givenNoAncestors(f);
-            given(fileAccessGuard.linkRole(f, List.of())).willReturn(Role.VIEWER);
+            given(fileAccessGuard.linkRoleFallback(f, List.of())).willReturn(Role.VIEWER);
 
             assertThat(publicFileResolver.resolve(f.getId().toString(), "not-a-uuid").getName())
                     .isEqualTo("report.pdf");
@@ -109,7 +109,7 @@ class PublicFileResolverTest {
             File folder = file("shared", "/", true, FileStatus.UPLOADED);
             givenFound(folder);
             givenNoAncestors(folder);
-            given(fileAccessGuard.linkRole(folder, List.of())).willReturn(Role.VIEWER);
+            given(fileAccessGuard.linkRoleFallback(folder, List.of())).willReturn(Role.VIEWER);
             File child = file("a.txt", "/shared", false, FileStatus.UPLOADED);
             given(findFilePort.findByNamespaceIdAndPath(any(), eq("/shared"))).willReturn(List.of(child));
 
@@ -123,7 +123,7 @@ class PublicFileResolverTest {
             File folder = file("shared", "/", true, FileStatus.UPLOADED);
             givenFound(folder);
             givenNoAncestors(folder);
-            given(fileAccessGuard.linkRole(folder, List.of())).willReturn(Role.VIEWER);
+            given(fileAccessGuard.linkRoleFallback(folder, List.of())).willReturn(Role.VIEWER);
             File child = file("a.txt", "/shared", false, FileStatus.UPLOADED);
             File trashed = file("b.txt", "/shared", false, FileStatus.TRASHED);
             given(findFilePort.findByNamespaceIdAndPath(any(), eq("/shared"))).willReturn(List.of(child, trashed));
@@ -149,7 +149,7 @@ class PublicFileResolverTest {
             File folder = file("shared", "/", true, FileStatus.UPLOADED);
             givenFound(folder);
             givenNoAncestors(folder);
-            given(fileAccessGuard.linkRole(folder, List.of())).willReturn(null);
+            given(fileAccessGuard.linkRoleFallback(folder, List.of())).willReturn(null);
 
             // No key at all: matchesGuestInvite short-circuits on parseUuid before ever consulting
             // findFileSharePort, same as the "unknown/malformed key" cases in resolve().
@@ -166,7 +166,7 @@ class PublicFileResolverTest {
             File f = file("report.pdf", "/1", false, FileStatus.UPLOADED);
             givenFound(f);
             givenNoAncestors(f);
-            given(fileAccessGuard.linkRole(f, List.of())).willReturn(null);
+            given(fileAccessGuard.linkRoleFallback(f, List.of())).willReturn(null);
             given(findFileSharePort.findByToken(key)).willReturn(Optional.of(guestShareOn(f)));
 
             assertThat(publicFileResolver.resolve(f.getId().toString(), key.toString()).getName())
@@ -180,7 +180,7 @@ class PublicFileResolverTest {
             File child = file("a.txt", "/shared", false, FileStatus.UPLOADED);
             givenFound(child);
             givenAncestors(child, List.of(folder));
-            given(fileAccessGuard.linkRole(child, List.of(folder))).willReturn(null);
+            given(fileAccessGuard.linkRoleFallback(child, List.of(folder))).willReturn(null);
             // Token was minted for the folder, not this child — reached through inheritance.
             given(findFileSharePort.findByToken(key)).willReturn(Optional.of(guestShareOn(folder)));
 
@@ -195,7 +195,7 @@ class PublicFileResolverTest {
             File unrelated = file("a.txt", "/2", false, FileStatus.UPLOADED);
             givenFound(unrelated);
             givenNoAncestors(unrelated);
-            given(fileAccessGuard.linkRole(unrelated, List.of())).willReturn(null);
+            given(fileAccessGuard.linkRoleFallback(unrelated, List.of())).willReturn(null);
             // Token was minted for a file that isn't an ancestor of (or the same as) the target.
             given(findFileSharePort.findByToken(key)).willReturn(Optional.of(guestShareOn(other)));
 
@@ -208,7 +208,7 @@ class PublicFileResolverTest {
             File folder = file("shared", "/", true, FileStatus.UPLOADED);
             givenFound(folder);
             givenNoAncestors(folder);
-            given(fileAccessGuard.linkRole(folder, List.of())).willReturn(null);
+            given(fileAccessGuard.linkRoleFallback(folder, List.of())).willReturn(null);
             given(findFileSharePort.findByToken(key)).willReturn(Optional.of(guestShareOn(folder)));
             File child = file("a.txt", "/shared", false, FileStatus.UPLOADED);
             given(findFilePort.findByNamespaceIdAndPath(any(), eq("/shared"))).willReturn(List.of(child));
@@ -224,7 +224,7 @@ class PublicFileResolverTest {
             File other = file("private.txt", "/1", false, FileStatus.UPLOADED);
             givenFound(folder);
             givenNoAncestors(folder);
-            given(fileAccessGuard.linkRole(folder, List.of())).willReturn(null);
+            given(fileAccessGuard.linkRoleFallback(folder, List.of())).willReturn(null);
             given(findFileSharePort.findByToken(key)).willReturn(Optional.of(guestShareOn(other)));
 
             assertNotFound(catchThrowable(() -> publicFileResolver.resolveChildren(folder.getId().toString(), key.toString())));
@@ -267,7 +267,7 @@ class PublicFileResolverTest {
             File f = file("report.pdf", "/1", false, FileStatus.UPLOADED);
             givenFound(f);
             givenNoAncestors(f);
-            given(fileAccessGuard.linkRole(f, List.of())).willReturn(null);
+            given(fileAccessGuard.linkRoleFallback(f, List.of())).willReturn(null);
             given(findFileSharePort.findByToken(key)).willReturn(Optional.empty());
 
             assertNotFound(catchThrowable(() -> publicFileResolver.resolve(f.getId().toString(), key.toString())));
@@ -278,7 +278,7 @@ class PublicFileResolverTest {
             File f = file("report.pdf", "/1", false, FileStatus.UPLOADED);
             givenFound(f);
             givenNoAncestors(f);
-            given(fileAccessGuard.linkRole(f, List.of())).willReturn(null);
+            given(fileAccessGuard.linkRoleFallback(f, List.of())).willReturn(null);
 
             assertNotFound(catchThrowable(() -> publicFileResolver.resolve(f.getId().toString(), "not-a-uuid")));
         }
@@ -288,7 +288,7 @@ class PublicFileResolverTest {
             File f = file("report.pdf", "/1", false, FileStatus.UPLOADED);
             givenFound(f);
             givenNoAncestors(f);
-            given(fileAccessGuard.linkRole(f, List.of())).willReturn(null);
+            given(fileAccessGuard.linkRoleFallback(f, List.of())).willReturn(null);
 
             assertNotFound(catchThrowable(() -> publicFileResolver.resolve(f.getId().toString(), null)));
         }
@@ -298,7 +298,7 @@ class PublicFileResolverTest {
             File f = file("report.pdf", "/1", false, FileStatus.UPLOADED);
             givenFound(f);
             givenNoAncestors(f);
-            given(fileAccessGuard.linkRole(f, List.of())).willReturn(null);
+            given(fileAccessGuard.linkRoleFallback(f, List.of())).willReturn(null);
 
             assertNotFound(catchThrowable(() -> publicFileResolver.resolve(f.getId().toString(), "  ")));
         }

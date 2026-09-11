@@ -80,6 +80,66 @@ class FileAccessGuardTest {
     }
 
     @Nested
+    @DisplayName("effectiveRole 은")
+    class EffectiveRole {
+
+        @Test
+        @DisplayName("소유자에겐 null (OWNER 롤이 따로 없다)")
+        void nullForOwner() {
+            File f = file(UUID.randomUUID(), "/");
+
+            assertThat(fileAccessGuard.effectiveRole(f, ownerId)).isNull();
+        }
+
+        @Test
+        @DisplayName("직접 grant가 있으면 그 role을 돌려준다")
+        void returnsTheCallersDirectGrant() {
+            UUID fileId = UUID.randomUUID();
+            File f = file(fileId, "/");
+            given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(fileId), callerId))
+                    .willReturn(Optional.of(grant(fileId, callerId, Role.EDITOR)));
+
+            assertThat(fileAccessGuard.effectiveRole(f, callerId)).isEqualTo(Role.EDITOR);
+        }
+
+        @Test
+        @DisplayName("grant가 전혀 없으면 null")
+        void nullWhenNoGrantAnywhere() {
+            UUID fileId = UUID.randomUUID();
+            File f = file(fileId, "/");
+            given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(fileId), callerId))
+                    .willReturn(Optional.empty());
+
+            assertThat(fileAccessGuard.effectiveRole(f, callerId)).isNull();
+        }
+    }
+
+    @Nested
+    @DisplayName("requireOwner 는")
+    class RequireOwner {
+
+        @Test
+        void passesForTheOwner() {
+            File f = file(UUID.randomUUID(), "/");
+
+            assertThatCode(() -> fileAccessGuard.requireOwner(f, ownerId))
+                    .doesNotThrowAnyException();
+        }
+
+        @Test
+        @DisplayName("소유자가 아니면 grant가 있어도 거부한다 (owner-only 액션)")
+        void deniesANonOwnerEvenWithAGrant() {
+            File f = file(UUID.randomUUID(), "/");
+
+            Throwable thrown = catchThrowable(() -> fileAccessGuard.requireOwner(f, callerId));
+
+            assertThat(thrown).isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getExceptionCase())
+                    .isEqualTo(FileExceptionCase.FILE_ACCESS_DENIED);
+        }
+    }
+
+    @Nested
     @DisplayName("파일에 직접 공유가 있을 때")
     class DirectShare {
 
@@ -341,6 +401,38 @@ class FileAccessGuardTest {
     }
 
     @Nested
+    @DisplayName("linkRoleFallback 은 (익명 라우트가 직접 쓰는, 로그인 여부 무관한 LINK 판정)")
+    class LinkRoleFallback {
+
+        @Test
+        @DisplayName("파일 자신이 LINK scope면 그 role을 돌려준다")
+        void ownScopeWins() {
+            File linked = file(UUID.randomUUID(), "/");
+            linked.enableLinkSharing();
+
+            assertThat(fileAccessGuard.linkRoleFallback(linked, List.of())).isEqualTo(Role.VIEWER);
+        }
+
+        @Test
+        @DisplayName("자신은 LINK가 아니어도 조상 중 하나가 LINK면 그 role을 돌려준다")
+        void fallsBackToAnAncestorsScope() {
+            File f = file(UUID.randomUUID(), "/shared");
+            File linkedAncestor = linkDirectory(UUID.randomUUID(), "/", "shared");
+
+            assertThat(fileAccessGuard.linkRoleFallback(f, List.of(linkedAncestor))).isEqualTo(Role.VIEWER);
+        }
+
+        @Test
+        @DisplayName("자신도 조상 누구도 LINK가 아니면 null")
+        void nullWhenNeitherFileNorAnyAncestorIsLinkScoped() {
+            File f = file(UUID.randomUUID(), "/shared");
+            File plainAncestor = directory(UUID.randomUUID(), "/", "shared");
+
+            assertThat(fileAccessGuard.linkRoleFallback(f, List.of(plainAncestor))).isNull();
+        }
+    }
+
+    @Nested
     @DisplayName("resolveGrant 는")
     class ResolveGrant {
 
@@ -415,6 +507,21 @@ class FileAccessGuardTest {
         @DisplayName("호출자가 null이면 조회 없이 비어있다")
         void emptyForAnonymousCaller() {
             assertThat(fileAccessGuard.resolveGrant(f, null)).isEmpty();
+        }
+
+        @Test
+        @DisplayName("포트가 아직 claim 안 된 pending 게스트 share를 돌려줘도 그대로 반환한다")
+        void returnsAStillPendingGuestShareAsIs() {
+            // resolveGrant trusts whatever the port's query gives it — it doesn't re-check
+            // claim state. A real repository query filters by sharedWithUserId=callerId, which a
+            // pending row (sharedWithUserId==null) would never match, but resolveGrant itself has
+            // no such guard, so a stubbed port here documents that it just passes the row through.
+            FileShare pending = FileShare.createPending(new FileShareFileId(fileId),
+                    new FileShareOwnerId(ownerId), new FileShareGranteeEmail("guest@example.com"), new FileShareRole(Role.VIEWER));
+            given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(fileId), callerId))
+                    .willReturn(Optional.of(pending));
+
+            assertThat(fileAccessGuard.resolveGrant(f, callerId)).contains(pending);
         }
     }
 

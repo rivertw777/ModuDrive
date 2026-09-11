@@ -29,7 +29,7 @@ public record FileAccessListResponse(
 ) {
     /** A directory above this file that is currently link-shared — this file's own scope stays
      * whatever it is, but it's reachable through this ancestor's LINK scope regardless (see
-     * {@code FileAccessGuard.linkRole} / {@code PublicFileResolver}, issue #303). */
+     * {@code FileAccessGuard.linkRoleFallback} / {@code PublicFileResolver}, issue #303). */
     public record InheritedLinkResponse(UUID fileId, String name, Role role) {}
 
     /** #313: this branch used to live in the direct loop below only — an ancestor's pending guest

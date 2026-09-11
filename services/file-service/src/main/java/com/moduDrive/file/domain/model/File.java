@@ -178,7 +178,7 @@ public class File {
      * grant — so it only ever hands out {@link Role#VIEWER} (spec 2). The role isn't a parameter
      * precisely so no caller can express anything else: an editor link is not a state this model
      * can reach (#318). Grants no bearer secret of its own either: {@code fileId} is already the
-     * capability for "anyone with the link" (see {@code FileAccessGuard.linkRole} /
+     * capability for "anyone with the link" (see {@code FileAccessGuard.linkRoleFallback} /
      * {@code PublicFileResolver}, issue #303), so this address never changes across toggling link
      * sharing off/on. */
     public void enableLinkSharing() {
