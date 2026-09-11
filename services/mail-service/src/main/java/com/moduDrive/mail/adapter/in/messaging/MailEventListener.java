@@ -28,6 +28,6 @@ class MailEventListener {
     void onShareInviteRequested(ShareInviteMailRequested event) {
         sendShareInviteMailUseCase.sendShareInviteMail(
                 new SendShareInviteMailCommand(event.granteeEmail(), event.fileName(), event.role(),
-                        event.fileId(), event.linkToken()));
+                        event.fileId(), event.inviteToken()));
     }
 }

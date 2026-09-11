@@ -3,11 +3,13 @@ package com.moduDrive.file.application.service;
 import com.moduDrive.common.core.annotation.UseCase;
 import com.moduDrive.file.application.port.in.command.ClaimPendingFileSharesCommand;
 import com.moduDrive.file.application.port.in.usecase.ClaimPendingFileSharesUseCase;
+import com.moduDrive.file.application.port.out.DeleteFileSharePort;
 import com.moduDrive.file.application.port.out.FindFileSharePort;
 import com.moduDrive.file.application.port.out.FindMemberByEmailPort;
 import com.moduDrive.file.application.port.out.SaveFileSharePort;
 import com.moduDrive.file.domain.model.File.FileId;
 import com.moduDrive.file.domain.model.FileShare;
+import com.moduDrive.file.domain.model.FileShare.FileShareId;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.transaction.annotation.Transactional;
@@ -22,6 +24,7 @@ class ClaimPendingFileSharesService implements ClaimPendingFileSharesUseCase {
 
     private final FindFileSharePort findFileSharePort;
     private final SaveFileSharePort saveFileSharePort;
+    private final DeleteFileSharePort deleteFileSharePort;
     private final FindMemberByEmailPort findMemberByEmailPort;
 
     @Transactional
@@ -42,9 +45,12 @@ class ClaimPendingFileSharesService implements ClaimPendingFileSharesUseCase {
                     new FileId(share.getFileId()), command.getMemberId())) {
                 // The owner already separately shared this same file with this member in the
                 // meantime — one stale pending invite losing the race must not fail the rest of
-                // this signup's claims.
-                log.warn("Skipping pending share {}: member {} already has a grant on this file",
+                // this signup's claims. Drop the row rather than leaving it: an unclaimed invite
+                // keeps a live token and its granteeEmail, so revoking the real grant later would
+                // not actually cut this person off (spec 5).
+                log.warn("Deleting pending share {}: member {} already has a grant on this file",
                         share.getId(), command.getMemberId());
+                deleteFileSharePort.deleteFileShare(new FileShareId(share.getId()));
                 continue;
             }
             share.claim(command.getMemberId());

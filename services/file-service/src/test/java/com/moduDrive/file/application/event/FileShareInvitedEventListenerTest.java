@@ -54,15 +54,15 @@ class FileShareInvitedEventListenerTest {
 
         @Test
         void publishesOnlyTheMailEvent() {
-            UUID linkToken = UUID.randomUUID();
+            UUID inviteToken = UUID.randomUUID();
             FileShareInvitedEvent event = new FileShareInvitedEvent(
                     FILE_ID, GRANTER_ID, "홍길동", "owner@modudrive.com", null, "guest@modudrive.com",
-                    "report.pdf", false, Role.VIEWER, linkToken);
+                    "report.pdf", false, Role.VIEWER, inviteToken);
 
             fileShareInvitedEventListener.onFileShareInvited(event);
 
             then(publishMailEventPort).should().publishShareInviteRequested(
-                    FILE_ID, "guest@modudrive.com", "report.pdf", "VIEWER", linkToken);
+                    FILE_ID, "guest@modudrive.com", "report.pdf", "VIEWER", inviteToken);
             then(publishNotificationEventPort).shouldHaveNoInteractions();
         }
     }
