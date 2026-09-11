@@ -16,6 +16,7 @@ import org.springframework.stereotype.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -59,7 +60,7 @@ class FileAccessGuard {
 
     void requireOwner(File file, UUID callerId) {
         if (!isOwner(file, callerId)) {
-            throw new BusinessException(FileExceptionCase.FILE_ACCESS_DENIED);
+            throw accessDenied(file);
         }
     }
 
@@ -72,12 +73,19 @@ class FileAccessGuard {
         // readable or downloadable. The owner short-circuits above, so their own
         // restore/purge/FILE_ALREADY_DELETED paths are untouched.
         if (file.isRemoved()) {
-            throw new BusinessException(FileExceptionCase.FILE_ACCESS_DENIED);
+            throw accessDenied(file);
         }
         Role granted = resolveRole(file, callerId);
         if (granted == null || !granted.permissions().contains(required)) {
-            throw new BusinessException(FileExceptionCase.FILE_ACCESS_DENIED);
+            throw accessDenied(file);
         }
+    }
+
+    /** Attaches isDirectory to the error body — the file already exists (we have it in hand), so
+     * this isn't a new existence leak, just enough for the client to word "이 파일에" vs "이
+     * 폴더에" instead of guessing. */
+    private static BusinessException accessDenied(File file) {
+        return new BusinessException(FileExceptionCase.FILE_ACCESS_DENIED, Map.of("isDirectory", file.isDirectory()));
     }
 
     /** Returns null when the caller has no explicit share on this file or on any directory above
