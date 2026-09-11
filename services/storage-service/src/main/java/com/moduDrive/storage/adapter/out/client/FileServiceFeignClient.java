@@ -35,9 +35,10 @@ interface FileServiceFeignClient {
     ApiResponse<List<FileVersionDto>> getAllFileVersions(@PathVariable String fileId,
                                                          @RequestParam String userId);
 
-    // Anonymous link-share download: no userId, because there is no authenticated caller — the
-    // key is the whole credential and file-service validates it (see PublicFileResolver). fileId
-    // is the shared file or one nested under a shared folder.
+    // Anonymous link-share download: no userId, because there is no authenticated caller.
+    // fileId alone is the credential for a LINK-scoped entry (or one nested under one); key is
+    // the credential for a guest invite instead. Either way file-service (PublicFileResolver) is
+    // what decides which, if any, actually authorizes this fileId.
     @GetMapping("/internal/files/public/{fileId}/revisions")
     ApiResponse<List<FileVersionDto>> getPublicFileRevisions(@PathVariable String fileId,
                                                              @RequestParam(required = false) String key,

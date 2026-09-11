@@ -15,7 +15,8 @@ import java.util.List;
 
 /** Service-to-service counterpart of {@link GetLatestFileVersionsController} for anonymous link
  * visitors: storage-service resolves the blocks to stream through this route. Same response shape
- * and {@code limit} parameter, but no {@code userId} — the {@code key} is the whole credential. */
+ * and {@code limit} parameter, but no {@code userId} — {@code fileId} alone authorizes a
+ * LINK-scoped entry, {@code key} authorizes a guest invite (see {@code PublicFileResolver}). */
 @WebAdapter
 @RestController
 @RequiredArgsConstructor

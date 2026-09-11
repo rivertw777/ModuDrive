@@ -12,9 +12,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
-/** The link token is the whole credential, so there is no caller id and no FileAccessGuard check —
- * {@link PublicFileResolver} deciding the token is live is the authorization. Download is the only
- * thing this enables, and every link role includes it. */
+/** No caller id and no direct {@code FileAccessGuard} check — {@code fileId}/{@code key} are the
+ * whole credential between them, and {@link PublicFileResolver} deciding one of them still
+ * authorizes this entry is the authorization. Download is the only thing this enables, and every
+ * link role includes it. */
 @UseCase
 @RequiredArgsConstructor
 class GetPublicFileRevisionsService implements GetPublicFileRevisionsUseCase {
