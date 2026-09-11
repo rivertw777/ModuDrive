@@ -174,14 +174,16 @@ public class File {
         this.deletedAt = deletedAt;
     }
 
-    /** {@code role} is always (re-)applied, which is how a viewer link is upgraded to an editor
-     * one — re-selecting LINK on an already-LINK file otherwise changes nothing. Grants no bearer
-     * secret of its own: {@code fileId} is already the capability for "anyone with the link" (see
-     * {@code FileAccessGuard.linkRole} / {@code PublicFileResolver}, issue #303), so this address
-     * never changes across toggling link sharing off/on. */
-    public void enableLinkSharing(Role role) {
+    /** A link is a bearer credential anyone who obtains it can use, unlike a named RESTRICTED
+     * grant — so it only ever hands out {@link Role#VIEWER} (spec 2). The role isn't a parameter
+     * precisely so no caller can express anything else: an editor link is not a state this model
+     * can reach (#318). Grants no bearer secret of its own either: {@code fileId} is already the
+     * capability for "anyone with the link" (see {@code FileAccessGuard.linkRole} /
+     * {@code PublicFileResolver}, issue #303), so this address never changes across toggling link
+     * sharing off/on. */
+    public void enableLinkSharing() {
         this.accessScope = ShareScope.LINK;
-        this.linkRole = role;
+        this.linkRole = Role.VIEWER;
     }
 
     public void disableLinkSharing() {

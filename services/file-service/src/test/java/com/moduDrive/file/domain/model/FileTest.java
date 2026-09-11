@@ -5,6 +5,8 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 
+import java.util.UUID;
+
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
@@ -36,6 +38,27 @@ class FileTest {
         void rejectsNull() {
             assertThatThrownBy(() -> new FileName(null))
                     .isInstanceOf(IllegalArgumentException.class);
+        }
+    }
+
+    @Nested
+    @DisplayName("링크 공유를 켤 때")
+    class WhenEnablingLinkSharing {
+
+        @Test
+        @DisplayName("역할은 언제나 뷰어로 고정된다 — 편집자 링크는 표현할 수 없다 (#318)")
+        void alwaysGrantsViewerOnly() {
+            File file = File.create(
+                    new File.FileNamespaceId(UUID.randomUUID()),
+                    new FileName("public.pdf"),
+                    new File.FilePath("/"),
+                    new File.FileOwnerId(UUID.randomUUID()),
+                    new File.FileIsDirectory(false));
+
+            file.enableLinkSharing();
+
+            assertThat(file.getAccessScope()).isEqualTo(ShareScope.LINK);
+            assertThat(file.getLinkRole()).isEqualTo(Role.VIEWER);
         }
     }
 }

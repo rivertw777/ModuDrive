@@ -81,7 +81,7 @@ class UpdateFileScopeServiceTest {
         @Test
         void clearsTheScope() {
             File linked = makeFile();
-            linked.enableLinkSharing(Role.VIEWER);
+            linked.enableLinkSharing();
             given(findFilePort.findById(new FileId(fileId))).willReturn(Optional.of(linked));
             given(saveFilePort.saveFile(any(File.class))).willAnswer(inv -> inv.getArgument(0));
 
@@ -107,7 +107,7 @@ class UpdateFileScopeServiceTest {
             File directory = File.withId(new FileId(fileId), new FileNamespaceId(namespaceId),
                     new FileName("a"), new FilePath("/"), new FileOwnerId(ownerId),
                     null, null, FileStatus.UPLOADED, new FileIsDirectory(true));
-            directory.enableLinkSharing(Role.VIEWER);
+            directory.enableLinkSharing();
             return directory;
         }
 
@@ -122,7 +122,7 @@ class UpdateFileScopeServiceTest {
             File directory = makeLinkedDirectory();
             // b: shared with its own separate LINK, not merely inherited from `a`.
             File descendantWithOwnLink = makeDescendant("b");
-            descendantWithOwnLink.enableLinkSharing(Role.VIEWER);
+            descendantWithOwnLink.enableLinkSharing();
             // c: never had its own scope — already RESTRICTED, only ever reachable via `a`.
             File alreadyRestrictedDescendant = makeDescendant("c");
 
@@ -163,7 +163,7 @@ class UpdateFileScopeServiceTest {
         void leavesDescendantsAloneWhenRestrictingAPlainFile() {
             // makeFile() is a leaf file, not a directory — no subtree to sweep.
             File linkedFile = makeFile();
-            linkedFile.enableLinkSharing(Role.VIEWER);
+            linkedFile.enableLinkSharing();
             given(findFilePort.findById(new FileId(fileId))).willReturn(Optional.of(linkedFile));
             given(saveFilePort.saveFile(any(File.class))).willAnswer(inv -> inv.getArgument(0));
 
@@ -184,7 +184,7 @@ class UpdateFileScopeServiceTest {
             File ancestor = File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespaceId),
                     new FileName(name), new FilePath(path), new FileOwnerId(ownerId),
                     null, null, FileStatus.UPLOADED, new FileIsDirectory(true));
-            ancestor.enableLinkSharing(Role.VIEWER);
+            ancestor.enableLinkSharing();
             return ancestor;
         }
 
@@ -193,7 +193,7 @@ class UpdateFileScopeServiceTest {
             // FileAccessGuard's link fallback keeps handing out VIEWER through the ancestor, so
             // leaving it LINK would mean answering RESTRICTED for a file that is still public.
             File linkedFile = makeFile();
-            linkedFile.enableLinkSharing(Role.VIEWER);
+            linkedFile.enableLinkSharing();
             File ancestor = makeLinkedAncestor("a", "/");
             given(findFilePort.findById(new FileId(fileId))).willReturn(Optional.of(linkedFile));
             given(fileAccessGuard.ancestorDirectories(linkedFile)).willReturn(List.of(ancestor));
@@ -212,12 +212,12 @@ class UpdateFileScopeServiceTest {
             // including a sibling that opted into LINK on its own, same rule as restricting a
             // folder directly.
             File linkedFile = makeFile();
-            linkedFile.enableLinkSharing(Role.VIEWER);
+            linkedFile.enableLinkSharing();
             File ancestor = makeLinkedAncestor("a", "/");
             File siblingWithOwnLink = File.withId(new FileId(UUID.randomUUID()),
                     new FileNamespaceId(namespaceId), new FileName("sibling.pdf"), new FilePath("/a"),
                     new FileOwnerId(ownerId), null, null, FileStatus.UPLOADED, new FileIsDirectory(false));
-            siblingWithOwnLink.enableLinkSharing(Role.VIEWER);
+            siblingWithOwnLink.enableLinkSharing();
             given(findFilePort.findById(new FileId(fileId))).willReturn(Optional.of(linkedFile));
             given(fileAccessGuard.ancestorDirectories(linkedFile)).willReturn(List.of(ancestor));
             given(findFilePort.findByNamespaceIdAndPathStartingWith(

@@ -15,3 +15,8 @@ spring:
 modudrive:
   member:
     email-verification-token-expiration: ${MEMBER_EMAIL_VERIFICATION_TOKEN_EXPIRATION:180000}
+
+# Shared service-to-service secret sent on outbound /internal/** calls to file-service.
+internal:
+  service:
+    token: ${INTERNAL_SERVICE_TOKEN}

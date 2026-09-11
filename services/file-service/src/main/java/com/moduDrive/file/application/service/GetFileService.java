@@ -18,6 +18,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.Optional;
 import java.util.UUID;
 
 @Slf4j
@@ -54,10 +55,14 @@ class GetFileService implements GetFileUseCase {
         // itself or, for a file only reachable by browsing into a shared folder, one inherited
         // from an ancestor (see ListSharedDirectoryService) — resolveGrant covers both so
         // "공유된 날짜" isn't blank just because this particular file was never shared directly.
-        MemberSummary sharedBy = lookupMember(file.getOwnerId());
-        LocalDateTime sharedAt = fileAccessGuard.resolveGrant(file, command.getCallerId())
-                .map(FileShare::getCreatedAt)
-                .orElse(null);
+        //
+        // No grant at all means the caller only got here through the LINK fallback in
+        // FileAccessGuard.resolveRole — nobody shared this file *with them*, so there is no
+        // "공유한 사용자" to name. Spec 3 gives a link-only visitor viewer access, not the owner's
+        // identity: a link forwarded to a stranger must not leak whose drive it came from (#319).
+        Optional<FileShare> grant = fileAccessGuard.resolveGrant(file, command.getCallerId());
+        MemberSummary sharedBy = grant.isPresent() ? lookupMember(file.getOwnerId()) : UNKNOWN_MEMBER;
+        LocalDateTime sharedAt = grant.map(FileShare::getCreatedAt).orElse(null);
         return new FileView(file, fileAccessGuard.effectiveRole(file, command.getCallerId()),
                 sharedBy.name(), sharedBy.email(), sharedAt, null, null);
     }

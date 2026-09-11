@@ -45,6 +45,7 @@ services:
       - REDIS_PASSWORD=${REDIS_PASSWORD}
       - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS}
       - MEMBER_EMAIL_VERIFICATION_TOKEN_EXPIRATION=${MEMBER_EMAIL_VERIFICATION_TOKEN_EXPIRATION}
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN}
     depends_on:
       eureka-server:
         condition: service_started
@@ -82,6 +83,7 @@ services:
       - SPRING_JPA_HIBERNATE_DDL_AUTO=${SPRING_JPA_HIBERNATE_DDL_AUTO}
       - MODUDRIVE_FILE_DEFAULT_QUOTA_BYTES=${MODUDRIVE_FILE_DEFAULT_QUOTA_BYTES}
       - KAFKA_BOOTSTRAP_SERVERS=${KAFKA_BOOTSTRAP_SERVERS}
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN}
     depends_on:
       eureka-server:
         condition: service_started
@@ -109,6 +111,7 @@ services:
       - REDIS_HOST=${REDIS_HOST}
       - REDIS_PORT=${REDIS_PORT}
       - REDIS_PASSWORD=${REDIS_PASSWORD}
+      - INTERNAL_SERVICE_TOKEN=${INTERNAL_SERVICE_TOKEN}
     depends_on:
       eureka-server:
         condition: service_started

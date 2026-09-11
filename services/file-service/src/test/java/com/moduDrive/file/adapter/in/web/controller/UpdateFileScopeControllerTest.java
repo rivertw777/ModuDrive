@@ -55,7 +55,7 @@ class UpdateFileScopeControllerTest {
         @Test
         void returnsScopeWithRole() throws Exception {
             File linked = file();
-            linked.enableLinkSharing(Role.VIEWER);
+            linked.enableLinkSharing();
             given(updateFileScopeUseCase.updateFileScope(any(UpdateFileScopeCommand.class))).willReturn(linked);
 
             mockMvc.perform(put("/api/v1/files/{fileId}/scope", FILE_ID)
