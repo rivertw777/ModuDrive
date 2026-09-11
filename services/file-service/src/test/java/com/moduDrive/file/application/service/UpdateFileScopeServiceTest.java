@@ -238,7 +238,7 @@ class UpdateFileScopeServiceTest {
             // state is identical either way, but a chain near the drive root turns restricting one
             // file into rewriting a large slice of it.
             File linkedFile = makeFile();
-            linkedFile.enableLinkSharing(Role.VIEWER);
+            linkedFile.enableLinkSharing();
             File grandParent = makeLinkedAncestor("g", "/");
             File parent = makeLinkedAncestor("p", "/g");
             // The row the sweep loads for p is a separate instance from the one the ancestor walk
@@ -247,7 +247,7 @@ class UpdateFileScopeServiceTest {
             File parentAsLoadedBySweep = File.withId(new FileId(parent.getId()), new FileNamespaceId(namespaceId),
                     new FileName("p"), new FilePath("/g"), new FileOwnerId(ownerId),
                     null, null, FileStatus.UPLOADED, new FileIsDirectory(true));
-            parentAsLoadedBySweep.enableLinkSharing(Role.VIEWER);
+            parentAsLoadedBySweep.enableLinkSharing();
             given(findFilePort.findById(new FileId(fileId))).willReturn(Optional.of(linkedFile));
             given(fileAccessGuard.ancestorDirectories(linkedFile)).willReturn(List.of(grandParent, parent));
             given(findFilePort.findByNamespaceIdAndPathStartingWith(

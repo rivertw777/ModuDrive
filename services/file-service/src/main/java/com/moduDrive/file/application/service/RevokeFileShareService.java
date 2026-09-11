@@ -7,15 +7,19 @@ import com.moduDrive.file.application.port.in.usecase.RevokeFileShareUseCase;
 import com.moduDrive.file.application.port.out.DeleteFileSharePort;
 import com.moduDrive.file.application.port.out.FindFilePort;
 import com.moduDrive.file.application.port.out.FindFileSharePort;
+import com.moduDrive.file.application.port.out.FindMemberByIdPort;
 import com.moduDrive.file.domain.model.File;
 import com.moduDrive.file.domain.model.File.FileId;
 import com.moduDrive.file.domain.model.FileShare;
 import com.moduDrive.file.exception.FileExceptionCase;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
+import java.util.UUID;
 
+@Slf4j
 @UseCase
 @RequiredArgsConstructor
 class RevokeFileShareService implements RevokeFileShareUseCase {
@@ -23,6 +27,7 @@ class RevokeFileShareService implements RevokeFileShareUseCase {
     private final FindFilePort findFilePort;
     private final FindFileSharePort findFileSharePort;
     private final DeleteFileSharePort deleteFileSharePort;
+    private final FindMemberByIdPort findMemberByIdPort;
     private final FileAccessGuard fileAccessGuard;
 
     @Transactional
@@ -66,26 +71,39 @@ class RevokeFileShareService implements RevokeFileShareUseCase {
         }
     }
 
-    /** The same grantee's share on another file. A claimed share points at a member id; a guest
-     * invite still waiting to be claimed carries only the invited email (see
-     * {@link FileShare#createPending}) — match on whichever identity this row actually has, so a
-     * pending guest's ancestor invites are revoked alongside a registered member's. Both identities
-     * are tried, not just whichever one the revoked row leads with: the same person can be recorded
-     * one way here and the other way above, because a claim that skipped a row (the file already had
-     * a direct grant — see {@code ClaimPendingFileSharesService}) leaves an unclaimed, email-only
-     * invite sitting over a member-id grant. Matching on one column alone walks straight past it and
-     * leaves the ancestor still handing out access. */
+    /** The same grantee's share on another file, tried both ways: a claimed member's ancestor
+     * grant is found by id first, but the same person can still have an unclaimed, email-only
+     * invite sitting on an ancestor (see {@code ClaimPendingFileSharesService}) — matching by id
+     * alone would walk straight past it and leave that ancestor still handing out access. The
+     * email for that lookup can't come from {@code revoked} itself: {@link FileShare#claim}
+     * always clears {@code granteeEmail} once a row is claimed, so a member-id row never carries
+     * one (issue #323) — it has to be resolved via member-service instead, and only when the id
+     * lookup actually misses, so a normal revoke with no ancestor invite never pays for it. */
     private Optional<FileShare> findGranteeShare(FileId ancestorId, FileShare revoked) {
-        if (revoked.getSharedWithUserId() != null) {
-            Optional<FileShare> byUserId =
-                    findFileSharePort.findByFileIdAndSharedWithUserId(ancestorId, revoked.getSharedWithUserId());
+        UUID granteeId = revoked.getSharedWithUserId();
+        if (granteeId != null) {
+            Optional<FileShare> byUserId = findFileSharePort.findByFileIdAndSharedWithUserId(ancestorId, granteeId);
             if (byUserId.isPresent()) {
                 return byUserId;
             }
+            return resolveEmail(granteeId)
+                    .flatMap(email -> findFileSharePort.findByFileIdAndGranteeEmail(ancestorId, email));
         }
         if (revoked.getGranteeEmail() != null) {
             return findFileSharePort.findByFileIdAndGranteeEmail(ancestorId, revoked.getGranteeEmail());
         }
         return Optional.empty();
+    }
+
+    /** Best-effort: a member-service hiccup must not block the revoke itself, only the
+     * email-based half of the ancestor sweep above — same degrade-on-failure pattern as
+     * {@code ShareFileService.resolveGranter}. */
+    private Optional<String> resolveEmail(UUID memberId) {
+        try {
+            return Optional.ofNullable(findMemberByIdPort.findMemberById(memberId).email());
+        } catch (RuntimeException e) {
+            log.warn("Could not resolve email for {} while sweeping ancestor grants for revoke", memberId, e);
+            return Optional.empty();
+        }
     }
 }

@@ -5,6 +5,8 @@ import com.moduDrive.file.application.port.in.command.RevokeFileShareCommand;
 import com.moduDrive.file.application.port.out.DeleteFileSharePort;
 import com.moduDrive.file.application.port.out.FindFilePort;
 import com.moduDrive.file.application.port.out.FindFileSharePort;
+import com.moduDrive.file.application.port.out.FindMemberByIdPort;
+import com.moduDrive.file.application.port.out.FindMemberByIdPort.MemberSummary;
 import com.moduDrive.file.domain.model.File;
 import com.moduDrive.file.domain.model.File.*;
 import com.moduDrive.file.domain.model.FileShare;
@@ -42,6 +44,7 @@ class RevokeFileShareServiceTest {
     @Mock private FindFilePort findFilePort;
     @Mock private FindFileSharePort findFileSharePort;
     @Mock private DeleteFileSharePort deleteFileSharePort;
+    @Mock private FindMemberByIdPort findMemberByIdPort;
     @Mock private FileAccessGuard fileAccessGuard;
     @InjectMocks private RevokeFileShareService revokeFileShareService;
 
@@ -166,22 +169,21 @@ class RevokeFileShareServiceTest {
 
         @Test
         void fallsBackToTheEmailWhenTheAncestorInviteWasNeverClaimed() {
-            // The direct grant names a member, but the ancestor's invite for the same person is
-            // still an unclaimed, email-only row — ClaimPendingFileSharesService skips a pending
-            // invite whose file already has a proper grant, so the two identities coexist. Looking
-            // up by member id alone finds nothing above and leaves that invite handing out access.
+            // The direct grant names a member (no email column of its own — FileShare.claim()
+            // always clears it), but the ancestor's invite for the same person is still an
+            // unclaimed, email-only row — ClaimPendingFileSharesService skips a pending invite
+            // whose file already has a proper grant. Looking up by member id alone finds nothing
+            // above; the fallback has to resolve this person's email via member-service instead
+            // of reading it off the revoked row (which never has one).
             File parent = directory("projects", "/");
             UUID parentShareId = UUID.randomUUID();
-            FileShare memberShareStillCarryingTheEmail = FileShare.withId(new FileShareId(shareId),
-                    new FileShareFileId(fileId), new FileShareOwnerId(ownerId),
-                    new FileShareSharedWithUserId(granteeId), new FileShareRole(Role.VIEWER),
-                    UUID.randomUUID(), "guest@example.com", null);
             given(findFilePort.findById(command.getFileId())).willReturn(Optional.of(file));
-            given(findFileSharePort.findByShareId(command.getShareId()))
-                    .willReturn(Optional.of(memberShareStillCarryingTheEmail));
+            given(findFileSharePort.findByShareId(command.getShareId())).willReturn(Optional.of(share(fileId)));
             given(fileAccessGuard.ancestorDirectories(file)).willReturn(List.of(parent));
             given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(parent.getId()), granteeId))
                     .willReturn(Optional.empty());
+            given(findMemberByIdPort.findMemberById(granteeId))
+                    .willReturn(new MemberSummary("guest", "guest@example.com"));
             given(findFileSharePort.findByFileIdAndGranteeEmail(new FileId(parent.getId()), "guest@example.com"))
                     .willReturn(Optional.of(FileShare.withId(new FileShareId(parentShareId),
                             new FileShareFileId(parent.getId()), new FileShareOwnerId(ownerId), null,
@@ -193,12 +195,33 @@ class RevokeFileShareServiceTest {
         }
 
         @Test
+        @DisplayName("member-service 조회가 실패해도 revoke 자체는 성공한다 (email fallback만 못 탐)")
+        void stillRevokesWhenMemberLookupFails() {
+            File parent = directory("projects", "/");
+            given(findFilePort.findById(command.getFileId())).willReturn(Optional.of(file));
+            given(findFileSharePort.findByShareId(command.getShareId())).willReturn(Optional.of(share(fileId)));
+            given(fileAccessGuard.ancestorDirectories(file)).willReturn(List.of(parent));
+            given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(parent.getId()), granteeId))
+                    .willReturn(Optional.empty());
+            willThrow(new RuntimeException("member-service unavailable"))
+                    .given(findMemberByIdPort).findMemberById(granteeId);
+
+            revokeFileShareService.revokeFileShare(command);
+
+            then(deleteFileSharePort).should(times(1)).deleteFileShare(any(FileShareId.class));
+        }
+
+        @Test
         void deletesNothingExtraWhenNoAncestorGrantsThemAnything() {
             File parent = directory("projects", "/");
             given(findFilePort.findById(command.getFileId())).willReturn(Optional.of(file));
             given(findFileSharePort.findByShareId(command.getShareId())).willReturn(Optional.of(share(fileId)));
             given(fileAccessGuard.ancestorDirectories(file)).willReturn(List.of(parent));
             given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(parent.getId()), granteeId))
+                    .willReturn(Optional.empty());
+            given(findMemberByIdPort.findMemberById(granteeId))
+                    .willReturn(new MemberSummary("river", "river@example.com"));
+            given(findFileSharePort.findByFileIdAndGranteeEmail(new FileId(parent.getId()), "river@example.com"))
                     .willReturn(Optional.empty());
 
             revokeFileShareService.revokeFileShare(command);
@@ -230,6 +253,10 @@ class RevokeFileShareServiceTest {
             given(findFileSharePort.findByShareId(command.getShareId())).willReturn(Optional.of(share(fileId)));
             given(fileAccessGuard.ancestorDirectories(file)).willReturn(List.of(parent));
             given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(parent.getId()), granteeId))
+                    .willReturn(Optional.empty());
+            given(findMemberByIdPort.findMemberById(granteeId))
+                    .willReturn(new MemberSummary("river", "river@example.com"));
+            given(findFileSharePort.findByFileIdAndGranteeEmail(new FileId(parent.getId()), "river@example.com"))
                     .willReturn(Optional.empty());
             given(findFileSharePort.findByFileId(new FileId(parent.getId())))
                     .willReturn(List.of(someoneElsesGrant));
