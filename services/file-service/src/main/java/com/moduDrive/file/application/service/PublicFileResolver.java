@@ -22,7 +22,7 @@ import java.util.UUID;
  * access is granted through one of two independent means:
  * <ul>
  *   <li>{@code fileId} alone, when the entry (or an ancestor folder) is scope LINK — see
- *       {@link FileAccessGuard#linkRole}. No {@code key} needed: {@code fileId} is already an
+ *       {@link FileAccessGuard#linkRoleFallback}. No {@code key} needed: {@code fileId} is already an
  *       unguessable capability (issue #303), and this opens that entry <b>and everything nested
  *       under it</b>;</li>
  *   <li>failing that, {@code key} against a pending/claimed guest share's per-invite
@@ -47,13 +47,13 @@ class PublicFileResolver {
     private final FileAccessGuard fileAccessGuard;
 
     /** The entry at {@code fileId}, provided either it (or an ancestor) is plain "anyone with the
-     * link" (no {@code key} needed, see {@link FileAccessGuard#linkRole}), or {@code key} matches
-     * a guest invite minted for this entry or a directory above it (see {@link
+     * link" (no {@code key} needed, see {@link FileAccessGuard#linkRoleFallback}), or {@code key}
+     * matches a guest invite minted for this entry or a directory above it (see {@link
      * #matchesGuestInvite}). */
     File resolve(String fileId, String key) {
         File target = target(fileId);
         List<File> ancestors = fileAccessGuard.ancestorDirectories(target);
-        if (fileAccessGuard.linkRole(target, ancestors) != null || matchesGuestInvite(target, key, ancestors)) {
+        if (fileAccessGuard.linkRoleFallback(target, ancestors) != null || matchesGuestInvite(target, key, ancestors)) {
             return target;
         }
         throw notFound();
@@ -71,7 +71,7 @@ class PublicFileResolver {
             throw notFound();
         }
         List<File> ancestors = fileAccessGuard.ancestorDirectories(dir);
-        if (fileAccessGuard.linkRole(dir, ancestors) == null && !matchesGuestInvite(dir, key, ancestors)) {
+        if (fileAccessGuard.linkRoleFallback(dir, ancestors) == null && !matchesGuestInvite(dir, key, ancestors)) {
             throw notFound();
         }
         return findFilePort
@@ -91,9 +91,10 @@ class PublicFileResolver {
     /** True when {@code key} is a live guest invite minted for this exact entry, or for a
      * directory somewhere above it — a folder invite reaches its whole subtree, the same
      * inheritance {@code ancestors} gives a signed-in grantee. Takes the caller's already-computed
-     * ancestor list rather than recomputing it: {@code linkRole} just walked the same path, and
-     * every rejection here answers the same FILE_NOT_FOUND either way, so doing the walk twice
-     * would only cost a query and widen the timing gap between rejection reasons for nothing. */
+     * ancestor list rather than recomputing it: {@code linkRoleFallback} just walked the same
+     * path, and every rejection here answers the same FILE_NOT_FOUND either way, so doing the
+     * walk twice would only cost a query and widen the timing gap between rejection reasons for
+     * nothing. */
     private boolean matchesGuestInvite(File target, String key, List<File> ancestors) {
         return parseUuid(key)
                 .flatMap(findFileSharePort::findByToken)
