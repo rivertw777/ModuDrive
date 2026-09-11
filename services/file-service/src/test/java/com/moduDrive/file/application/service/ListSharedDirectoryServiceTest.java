@@ -21,6 +21,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Answers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -45,7 +46,7 @@ class ListSharedDirectoryServiceTest {
     @Mock private FindFilePort findFilePort;
     @Mock private FindFileSharePort findFileSharePort;
     @Mock private FileFavoritePort fileFavoritePort;
-    @Mock private FindMemberByIdPort findMemberByIdPort;
+    @Mock(answer = Answers.CALLS_REAL_METHODS) private FindMemberByIdPort findMemberByIdPort;
     @Mock private FileAccessGuard fileAccessGuard;
     @InjectMocks private ListSharedDirectoryService listSharedDirectoryService;
 
@@ -66,6 +67,16 @@ class ListSharedDirectoryServiceTest {
     private File entry(String name, String path, boolean directory, FileStatus status) {
         return File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespaceId),
                 new FileName(name), new FilePath(path), new FileOwnerId(UUID.randomUUID()),
+                null, null, status, new FileIsDirectory(directory));
+    }
+
+    /** A child the caller owns — every file in a namespace shares one owner (see
+     * UploadFileMetadataService), so this is the "owner browsing their own folder through the
+     * shared-directory route" shape {@link WhenAccessible#markFavoriteAppliesToAnOwnedChildToo}
+     * needs. */
+    private File ownEntry(String name, String path, boolean directory, FileStatus status) {
+        return File.withId(new FileId(UUID.randomUUID()), new FileNamespaceId(namespaceId),
+                new FileName(name), new FilePath(path), new FileOwnerId(callerId),
                 null, null, status, new FileIsDirectory(directory));
     }
 
@@ -90,6 +101,21 @@ class ListSharedDirectoryServiceTest {
             List<FileView> result = listSharedDirectoryService.listSharedDirectory(command);
 
             assertThat(result).extracting(FileView::file).containsExactly(child);
+        }
+
+        @Test
+        @DisplayName("소유자가 이 라우트로 자기 폴더를 볼 때도 즐겨찾기 별이 표시된다")
+        void markFavoriteAppliesToAnOwnedChildToo() {
+            File ownChild = ownEntry("mine.txt", "/shared", false, FileStatus.UPLOADED);
+            given(findFilePort.findById(command.getDirectoryId())).willReturn(Optional.of(dir()));
+            given(findFilePort.findByNamespaceIdAndPath(new NamespaceId(namespaceId), "/shared"))
+                    .willReturn(List.of(ownChild));
+            given(fileFavoritePort.favoriteFileIds(callerId)).willReturn(Set.of(ownChild.getId()));
+
+            List<FileView> result = listSharedDirectoryService.listSharedDirectory(command);
+
+            assertThat(result).hasSize(1);
+            assertThat(result.get(0).file().isFavorite()).isTrue();
         }
 
         @Test

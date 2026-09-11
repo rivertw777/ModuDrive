@@ -72,6 +72,18 @@ class UpdateFileScopeServiceTest {
             assertThat(result.getAccessScope()).isEqualTo(ShareScope.LINK);
             assertThat(result.getLinkRole()).isEqualTo(Role.VIEWER);
         }
+
+        @Test
+        @DisplayName("LINK 전환은 조상을 건드리지 않는다 (restrictLinkedAncestors는 RESTRICTED 분기 전용)")
+        void neverTouchesAncestors() {
+            given(findFilePort.findById(new FileId(fileId))).willReturn(Optional.of(makeFile()));
+            given(saveFilePort.saveFile(any(File.class))).willAnswer(inv -> inv.getArgument(0));
+
+            updateFileScopeService.updateFileScope(command(ShareScope.LINK));
+
+            then(fileAccessGuard).should(never()).ancestorDirectories(any());
+            then(saveFilePort).should(times(1)).saveFile(any(File.class));
+        }
     }
 
     @Nested

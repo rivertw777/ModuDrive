@@ -21,6 +21,7 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.Answers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -44,7 +45,7 @@ class ShareFileServiceTest {
     @Mock private FindFileSharePort findFileSharePort;
     @Mock private SaveFileSharePort saveFileSharePort;
     @Mock private FindMemberByEmailPort findMemberByEmailPort;
-    @Mock private FindMemberByIdPort findMemberByIdPort;
+    @Mock(answer = Answers.CALLS_REAL_METHODS) private FindMemberByIdPort findMemberByIdPort;
     @Mock private FileAccessGuard fileAccessGuard;
     @Mock private ApplicationEventPublisher eventPublisher;
     @InjectMocks private ShareFileService shareFileService;

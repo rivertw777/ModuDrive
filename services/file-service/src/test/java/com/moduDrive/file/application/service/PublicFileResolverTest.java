@@ -56,6 +56,18 @@ class PublicFileResolverTest {
         given(findFilePort.findById(new FileId(f.getId()))).willReturn(Optional.of(f));
     }
 
+    /** The ancestor walk is computed once up front now (issue #320) and handed to both the LINK
+     * check and the guest-invite check, so every scenario below has to stub it even when its own
+     * assertions only care about one of the two — an unstubbed mock returns null, not an empty
+     * list, and the real (non-mocked) matchesGuestInvite would NPE on that. */
+    private void givenAncestors(File f, List<File> ancestors) {
+        given(fileAccessGuard.ancestorDirectories(f)).willReturn(ancestors);
+    }
+
+    private void givenNoAncestors(File f) {
+        givenAncestors(f, List.of());
+    }
+
     private FileShare guestShareOn(File f) {
         return FileShare.createPending(new FileShareFileId(f.getId()), new FileShareOwnerId(f.getOwnerId()),
                 new FileShareGranteeEmail("guest@example.com"), new FileShareRole(Role.VIEWER));
@@ -70,7 +82,8 @@ class PublicFileResolverTest {
         void ownLinkScopeNeedsNoKey() {
             File f = file("report.pdf", "/1", false, FileStatus.UPLOADED);
             givenFound(f);
-            given(fileAccessGuard.linkRole(f)).willReturn(Role.VIEWER);
+            givenNoAncestors(f);
+            given(fileAccessGuard.linkRole(f, List.of())).willReturn(Role.VIEWER);
 
             assertThat(publicFileResolver.resolve(f.getId().toString(), null).getName())
                     .isEqualTo("report.pdf");
@@ -81,7 +94,8 @@ class PublicFileResolverTest {
         void ancestorLinkScopeNeedsNoKeyEitherAndIgnoresAGarbageKey() {
             File f = file("report.pdf", "/shared", false, FileStatus.UPLOADED);
             givenFound(f);
-            given(fileAccessGuard.linkRole(f)).willReturn(Role.VIEWER);
+            givenNoAncestors(f);
+            given(fileAccessGuard.linkRole(f, List.of())).willReturn(Role.VIEWER);
 
             assertThat(publicFileResolver.resolve(f.getId().toString(), "not-a-uuid").getName())
                     .isEqualTo("report.pdf");
@@ -94,7 +108,8 @@ class PublicFileResolverTest {
         void resolvesChildrenOfALinkScopedDirectoryWithoutAKey() {
             File folder = file("shared", "/", true, FileStatus.UPLOADED);
             givenFound(folder);
-            given(fileAccessGuard.linkRole(folder)).willReturn(Role.VIEWER);
+            givenNoAncestors(folder);
+            given(fileAccessGuard.linkRole(folder, List.of())).willReturn(Role.VIEWER);
             File child = file("a.txt", "/shared", false, FileStatus.UPLOADED);
             given(findFilePort.findByNamespaceIdAndPath(any(), eq("/shared"))).willReturn(List.of(child));
 
@@ -107,7 +122,8 @@ class PublicFileResolverTest {
         void excludesRemovedChildrenFromTheListing() {
             File folder = file("shared", "/", true, FileStatus.UPLOADED);
             givenFound(folder);
-            given(fileAccessGuard.linkRole(folder)).willReturn(Role.VIEWER);
+            givenNoAncestors(folder);
+            given(fileAccessGuard.linkRole(folder, List.of())).willReturn(Role.VIEWER);
             File child = file("a.txt", "/shared", false, FileStatus.UPLOADED);
             File trashed = file("b.txt", "/shared", false, FileStatus.TRASHED);
             given(findFilePort.findByNamespaceIdAndPath(any(), eq("/shared"))).willReturn(List.of(child, trashed));
@@ -122,7 +138,8 @@ class PublicFileResolverTest {
             givenFound(f);
 
             assertNotFound(catchThrowable(() -> publicFileResolver.resolveChildren(f.getId().toString(), null)));
-            // isDirectory() is checked first (short-circuits &&), so scope is never even asked.
+            // isDirectory() is checked first and short-circuits before any ancestor walk or scope
+            // check — a file id used against this route was never going to authorize anything here.
             then(fileAccessGuard).shouldHaveNoInteractions();
         }
 
@@ -131,10 +148,11 @@ class PublicFileResolverTest {
         void rejectsResolveChildrenWhenTheDirectoryIsNotLinkScopedNorInvited() {
             File folder = file("shared", "/", true, FileStatus.UPLOADED);
             givenFound(folder);
-            given(fileAccessGuard.linkRole(folder)).willReturn(null);
+            givenNoAncestors(folder);
+            given(fileAccessGuard.linkRole(folder, List.of())).willReturn(null);
 
             // No key at all: matchesGuestInvite short-circuits on parseUuid before ever consulting
-            // fileAccessGuard, same as the "unknown/malformed key" cases in resolve().
+            // findFileSharePort, same as the "unknown/malformed key" cases in resolve().
             assertNotFound(catchThrowable(() -> publicFileResolver.resolveChildren(folder.getId().toString(), null)));
         }
     }
@@ -147,6 +165,8 @@ class PublicFileResolverTest {
         void returnsTheFileEvenThoughItsScopeStaysRestricted() {
             File f = file("report.pdf", "/1", false, FileStatus.UPLOADED);
             givenFound(f);
+            givenNoAncestors(f);
+            given(fileAccessGuard.linkRole(f, List.of())).willReturn(null);
             given(findFileSharePort.findByToken(key)).willReturn(Optional.of(guestShareOn(f)));
 
             assertThat(publicFileResolver.resolve(f.getId().toString(), key.toString()).getName())
@@ -159,8 +179,8 @@ class PublicFileResolverTest {
             File folder = file("shared", "/", true, FileStatus.UPLOADED);
             File child = file("a.txt", "/shared", false, FileStatus.UPLOADED);
             givenFound(child);
-            given(fileAccessGuard.linkRole(child)).willReturn(null);
-            given(fileAccessGuard.ancestorDirectories(child)).willReturn(List.of(folder));
+            givenAncestors(child, List.of(folder));
+            given(fileAccessGuard.linkRole(child, List.of(folder))).willReturn(null);
             // Token was minted for the folder, not this child — reached through inheritance.
             given(findFileSharePort.findByToken(key)).willReturn(Optional.of(guestShareOn(folder)));
 
@@ -174,8 +194,8 @@ class PublicFileResolverTest {
             File other = file("private.txt", "/1", false, FileStatus.UPLOADED);
             File unrelated = file("a.txt", "/2", false, FileStatus.UPLOADED);
             givenFound(unrelated);
-            given(fileAccessGuard.linkRole(unrelated)).willReturn(null);
-            given(fileAccessGuard.ancestorDirectories(unrelated)).willReturn(List.of());
+            givenNoAncestors(unrelated);
+            given(fileAccessGuard.linkRole(unrelated, List.of())).willReturn(null);
             // Token was minted for a file that isn't an ancestor of (or the same as) the target.
             given(findFileSharePort.findByToken(key)).willReturn(Optional.of(guestShareOn(other)));
 
@@ -187,7 +207,8 @@ class PublicFileResolverTest {
         void listsChildrenWhenTheGuestTokenReachesTheDirectory() {
             File folder = file("shared", "/", true, FileStatus.UPLOADED);
             givenFound(folder);
-            given(fileAccessGuard.linkRole(folder)).willReturn(null);
+            givenNoAncestors(folder);
+            given(fileAccessGuard.linkRole(folder, List.of())).willReturn(null);
             given(findFileSharePort.findByToken(key)).willReturn(Optional.of(guestShareOn(folder)));
             File child = file("a.txt", "/shared", false, FileStatus.UPLOADED);
             given(findFilePort.findByNamespaceIdAndPath(any(), eq("/shared"))).willReturn(List.of(child));
@@ -202,8 +223,8 @@ class PublicFileResolverTest {
             File folder = file("shared", "/", true, FileStatus.UPLOADED);
             File other = file("private.txt", "/1", false, FileStatus.UPLOADED);
             givenFound(folder);
-            given(fileAccessGuard.linkRole(folder)).willReturn(null);
-            given(fileAccessGuard.ancestorDirectories(folder)).willReturn(List.of());
+            givenNoAncestors(folder);
+            given(fileAccessGuard.linkRole(folder, List.of())).willReturn(null);
             given(findFileSharePort.findByToken(key)).willReturn(Optional.of(guestShareOn(other)));
 
             assertNotFound(catchThrowable(() -> publicFileResolver.resolveChildren(folder.getId().toString(), key.toString())));
@@ -245,6 +266,8 @@ class PublicFileResolverTest {
         void unknownOrExpiredKey() {
             File f = file("report.pdf", "/1", false, FileStatus.UPLOADED);
             givenFound(f);
+            givenNoAncestors(f);
+            given(fileAccessGuard.linkRole(f, List.of())).willReturn(null);
             given(findFileSharePort.findByToken(key)).willReturn(Optional.empty());
 
             assertNotFound(catchThrowable(() -> publicFileResolver.resolve(f.getId().toString(), key.toString())));
@@ -254,6 +277,8 @@ class PublicFileResolverTest {
         void malformedKey() {
             File f = file("report.pdf", "/1", false, FileStatus.UPLOADED);
             givenFound(f);
+            givenNoAncestors(f);
+            given(fileAccessGuard.linkRole(f, List.of())).willReturn(null);
 
             assertNotFound(catchThrowable(() -> publicFileResolver.resolve(f.getId().toString(), "not-a-uuid")));
         }
@@ -262,6 +287,8 @@ class PublicFileResolverTest {
         void nullKey() {
             File f = file("report.pdf", "/1", false, FileStatus.UPLOADED);
             givenFound(f);
+            givenNoAncestors(f);
+            given(fileAccessGuard.linkRole(f, List.of())).willReturn(null);
 
             assertNotFound(catchThrowable(() -> publicFileResolver.resolve(f.getId().toString(), null)));
         }
@@ -270,6 +297,8 @@ class PublicFileResolverTest {
         void blankKey() {
             File f = file("report.pdf", "/1", false, FileStatus.UPLOADED);
             givenFound(f);
+            givenNoAncestors(f);
+            given(fileAccessGuard.linkRole(f, List.of())).willReturn(null);
 
             assertNotFound(catchThrowable(() -> publicFileResolver.resolve(f.getId().toString(), "  ")));
         }

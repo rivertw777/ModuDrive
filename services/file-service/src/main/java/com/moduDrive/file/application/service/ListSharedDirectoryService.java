@@ -30,8 +30,6 @@ import java.util.UUID;
 @RequiredArgsConstructor
 class ListSharedDirectoryService implements ListSharedDirectoryUseCase {
 
-    private static final MemberSummary UNKNOWN_MEMBER = new MemberSummary(null, null);
-
     private final FindFilePort findFilePort;
     private final FindFileSharePort findFileSharePort;
     private final FileFavoritePort fileFavoritePort;
@@ -62,7 +60,7 @@ class ListSharedDirectoryService implements ListSharedDirectoryUseCase {
         // call site's intent ("what does a child inherit"), not because the logic differs.
         Role inheritedRole = fileAccessGuard.inheritableRole(directory, callerId);
         Optional<FileShare> grant = fileAccessGuard.resolveGrant(directory, callerId);
-        MemberSummary sharedBy = lookupMember(directory.getOwnerId());
+        MemberSummary sharedBy = findMemberByIdPort.findMemberByIdOrUnknown(directory.getOwnerId());
         LocalDateTime sharedAt = grant.map(FileShare::getCreatedAt).orElse(null);
 
         return findFilePort
@@ -70,10 +68,10 @@ class ListSharedDirectoryService implements ListSharedDirectoryUseCase {
                 .stream()
                 .filter(child -> !child.isRemoved())
                 .map(child -> {
+                    child.markFavorite(favoriteIds.contains(child.getId()));
                     if (child.getOwnerId().equals(callerId)) {
                         return FileView.owned(child);
                     }
-                    child.markFavorite(favoriteIds.contains(child.getId()));
                     // A child can also hold its own direct share to the caller (see
                     // ShareFileService) alongside this folder's inherited one — unfiltered, so it
                     // shows here too. The direct grant, if any, wins outright (matches
@@ -81,6 +79,9 @@ class ListSharedDirectoryService implements ListSharedDirectoryUseCase {
                     // file-specific decision by the owner and is never overridden by an inherited
                     // one, more generous or not); the date is the direct grant's own, since that's
                     // the row the caller was actually notified about.
+                    // ponytail: one query per child (N+1) — add a batch
+                    // findByFileIdInAndSharedWithUserId(List<FileId>, UUID) lookup if a folder with
+                    // hundreds of entries makes this measurably slow.
                     Optional<FileShare> direct =
                             findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(child.getId()), callerId);
                     Role role = direct.map(FileShare::getRole).orElse(inheritedRole);
@@ -88,15 +89,5 @@ class ListSharedDirectoryService implements ListSharedDirectoryUseCase {
                     return new FileView(child, role, sharedBy.name(), sharedBy.email(), sharedOn, null, null);
                 })
                 .toList();
-    }
-
-    /** Best-effort: a member-service hiccup degrades to "shared by unknown", never fails the
-     * whole listing the user needs to browse. */
-    private MemberSummary lookupMember(UUID memberId) {
-        try {
-            return findMemberByIdPort.findMemberById(memberId);
-        } catch (Exception e) {
-            return UNKNOWN_MEMBER;
-        }
     }
 }

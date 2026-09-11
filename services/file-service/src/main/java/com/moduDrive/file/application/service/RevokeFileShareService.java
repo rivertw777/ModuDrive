@@ -13,7 +13,6 @@ import com.moduDrive.file.domain.model.File.FileId;
 import com.moduDrive.file.domain.model.FileShare;
 import com.moduDrive.file.exception.FileExceptionCase;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.ArrayList;
@@ -21,7 +20,6 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
-@Slf4j
 @UseCase
 @RequiredArgsConstructor
 class RevokeFileShareService implements RevokeFileShareUseCase {
@@ -65,7 +63,12 @@ class RevokeFileShareService implements RevokeFileShareUseCase {
      * still hands out — frequently a more generous role than the one just revoked. "Stop sharing
      * this with them" therefore has to reach the whole path above the file as well, which is what
      * the spec's 공유 권한 삭제 rule asks for. Every ancestor is swept, not just the nearest, since
-     * any one of them left behind re-grants access on its own. */
+     * any one of them left behind re-grants access on its own.
+     * <p>
+     * Doesn't re-check ownership on each ancestor row before deleting it — safe only because a
+     * namespace has exactly one owner today (see {@code UploadFileMetadataService}), so every
+     * ancestor here is already the caller's own. A "shared folder someone else can upload into"
+     * feature would break that assumption and need an explicit check here. */
     private void revokeAncestorGrants(File file, FileShare revoked) {
         UUID granteeId = revoked.getSharedWithUserId();
         List<FileId> missed = new ArrayList<>();
@@ -110,14 +113,9 @@ class RevokeFileShareService implements RevokeFileShareUseCase {
     }
 
     /** Best-effort: a member-service hiccup must not block the revoke itself, only the
-     * email-based half of the ancestor sweep above — same degrade-on-failure pattern as
-     * {@code ShareFileService.resolveGranter}. */
+     * email-based half of the ancestor sweep above — {@code findMemberByIdOrUnknown} already
+     * degrades to a null email on failure, logging it there instead of here. */
     private Optional<String> resolveEmail(UUID memberId) {
-        try {
-            return Optional.ofNullable(findMemberByIdPort.findMemberById(memberId).email());
-        } catch (RuntimeException e) {
-            log.warn("Could not resolve email for {} while sweeping ancestor grants for revoke", memberId, e);
-            return Optional.empty();
-        }
+        return Optional.ofNullable(findMemberByIdPort.findMemberByIdOrUnknown(memberId).email());
     }
 }

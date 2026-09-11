@@ -81,7 +81,12 @@ class UpdateFileScopeService implements UpdateFileScopeUseCase {
      * contains every LINK ancestor below it, and {@code ancestorDirectories} returns root-most
      * first, so the first hit is the outermost one. Sweeping each LINK ancestor in turn rewrites the
      * same rows once per level — for a chain near the drive root, a large slice of it to restrict a
-     * single file — and lands on exactly the same end state. */
+     * single file — and lands on exactly the same end state.
+     * <p>
+     * Doesn't re-check ownership on each ancestor before saving it — safe only because a
+     * namespace has exactly one owner today (see {@code UploadFileMetadataService}), so every
+     * ancestor here is already the caller's own. A "shared folder someone else can upload into"
+     * feature would break that assumption and need an explicit check here. */
     private void restrictLinkedAncestors(File file) {
         for (File ancestor : fileAccessGuard.ancestorDirectories(file)) {
             if (ancestor.getAccessScope() != ShareScope.LINK) {

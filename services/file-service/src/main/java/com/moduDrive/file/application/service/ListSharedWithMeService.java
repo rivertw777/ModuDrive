@@ -12,18 +12,14 @@ import com.moduDrive.file.application.port.out.FindMemberByIdPort.MemberSummary;
 import com.moduDrive.file.domain.model.File;
 import com.moduDrive.file.domain.model.File.FileId;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
-@Slf4j
 @UseCase
 @RequiredArgsConstructor
 class ListSharedWithMeService implements ListSharedWithMeUseCase {
-
-    private static final MemberSummary UNKNOWN_MEMBER = new MemberSummary(null, null);
 
     private final FindFileSharePort findFileSharePort;
     private final FindFilePort findFilePort;
@@ -49,22 +45,11 @@ class ListSharedWithMeService implements ListSharedWithMeUseCase {
                             // The caller never owns a shared-with-me file, so their star is
                             // always the per-user one.
                             file.markFavorite(favoriteIds.contains(file.getId()));
-                            MemberSummary sharedBy = lookupMember(file.getOwnerId());
+                            MemberSummary sharedBy = findMemberByIdPort.findMemberByIdOrUnknown(file.getOwnerId());
                             return new FileView(file, share.getRole(), sharedBy.name(), sharedBy.email(),
                                     share.getCreatedAt(), null, null);
                         })
                         .stream())
                 .toList();
-    }
-
-    /** Best-effort: a member-service hiccup degrades one row to "shared by unknown", never fails
-     * the whole list the user needs to see what has been shared with them. */
-    private MemberSummary lookupMember(UUID memberId) {
-        try {
-            return findMemberByIdPort.findMemberById(memberId);
-        } catch (RuntimeException e) {
-            log.warn("Failed to resolve sharer {} for shared-with-me list, showing as unknown", memberId, e);
-            return UNKNOWN_MEMBER;
-        }
     }
 }

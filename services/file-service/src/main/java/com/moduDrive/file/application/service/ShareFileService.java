@@ -18,14 +18,12 @@ import com.moduDrive.file.domain.model.FileShare.FileShareGranteeEmail;
 import com.moduDrive.file.domain.model.FileShare.FileShareSharedWithUserId;
 import com.moduDrive.file.exception.FileExceptionCase;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 import java.util.UUID;
 
-@Slf4j
 @UseCase
 @RequiredArgsConstructor
 class ShareFileService implements ShareFileUseCase {
@@ -68,25 +66,13 @@ class ShareFileService implements ShareFileUseCase {
         );
         FileShare saved = saveFileSharePort.saveFileShare(fileShare);
 
-        MemberSummary granter = resolveGranter(saved.getOwnerId());
+        MemberSummary granter = findMemberByIdPort.findMemberByIdOrUnknown(saved.getOwnerId());
         eventPublisher.publishEvent(new FileShareInvitedEvent(
                 saved.getFileId(), saved.getOwnerId(), granter.name(), granter.email(),
                 saved.getSharedWithUserId(), command.getEmail(), file.getName(), file.isDirectory(),
                 saved.getRole(), null));
 
         return Optional.of(saved);
-    }
-
-    /** Best-effort, and only once the share has actually committed: the in-app notification is
-     * nicer with "shared by &lt;name&gt;", but a member-service hiccup must not fail the share.
-     * A null name/email just drops the sharer line. */
-    private MemberSummary resolveGranter(UUID granterId) {
-        try {
-            return findMemberByIdPort.findMemberById(granterId);
-        } catch (RuntimeException e) {
-            log.warn("Could not resolve sharer for notification: granterId={}", granterId, e);
-            return new MemberSummary(null, null);
-        }
     }
 
     /** No member owns the invited email, so there is no id to attach a normal {@link FileShare}
@@ -107,7 +93,7 @@ class ShareFileService implements ShareFileUseCase {
         );
         FileShare saved = saveFileSharePort.saveFileShare(pending);
 
-        MemberSummary granter = resolveGranter(saved.getOwnerId());
+        MemberSummary granter = findMemberByIdPort.findMemberByIdOrUnknown(saved.getOwnerId());
         eventPublisher.publishEvent(new FileShareInvitedEvent(
                 saved.getFileId(), saved.getOwnerId(), granter.name(), granter.email(), null,
                 command.getEmail(), file.getName(), file.isDirectory(), saved.getRole(), saved.getToken()));
