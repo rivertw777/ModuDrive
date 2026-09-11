@@ -91,9 +91,9 @@ class ShareFileService implements ShareFileUseCase {
 
     /** No member owns the invited email, so there is no id to attach a normal {@link FileShare}
      * row to. Stays a {@code RESTRICTED} grant, scoped to just this one email, via
-     * {@link FileShare#createPending}: the invite gets its own token independent of the file's
-     * {@code linkToken}, so it never turns the file into "anyone with the link" and can be
-     * revoked on its own without touching any other grant. */
+     * {@link FileShare#createPending}: the invite gets its own token, independent of the file's
+     * access scope, so it never turns the file into "anyone with the link" and can be revoked on
+     * its own without touching any other grant. */
     private void inviteGuest(File file, ShareFileCommand command) {
         if (findFileSharePort.existsByFileIdAndGranteeEmail(command.getFileId(), command.getEmail())) {
             throw new BusinessException(FileExceptionCase.FILE_SHARE_ALREADY_EXISTS);

@@ -1,6 +1,7 @@
 package com.moduDrive.file.application.service;
 
 import com.moduDrive.file.application.port.in.command.ClaimPendingFileSharesCommand;
+import com.moduDrive.file.application.port.out.DeleteFileSharePort;
 import com.moduDrive.file.application.port.out.FindFileSharePort;
 import com.moduDrive.file.application.port.out.FindMemberByEmailPort;
 import com.moduDrive.file.application.port.out.SaveFileSharePort;
@@ -8,6 +9,7 @@ import com.moduDrive.file.domain.model.File.FileId;
 import com.moduDrive.file.domain.model.FileShare;
 import com.moduDrive.file.domain.model.FileShare.FileShareFileId;
 import com.moduDrive.file.domain.model.FileShare.FileShareGranteeEmail;
+import com.moduDrive.file.domain.model.FileShare.FileShareId;
 import com.moduDrive.file.domain.model.FileShare.FileShareOwnerId;
 import com.moduDrive.file.domain.model.FileShare.FileShareRole;
 import com.moduDrive.file.domain.model.Role;
@@ -32,6 +34,7 @@ class ClaimPendingFileSharesServiceTest {
 
     @Mock private FindFileSharePort findFileSharePort;
     @Mock private SaveFileSharePort saveFileSharePort;
+    @Mock private DeleteFileSharePort deleteFileSharePort;
     @Mock private FindMemberByEmailPort findMemberByEmailPort;
     @InjectMocks private ClaimPendingFileSharesService claimPendingFileSharesService;
 
@@ -43,6 +46,15 @@ class ClaimPendingFileSharesServiceTest {
         return FileShare.createPending(
                 new FileShareFileId(UUID.randomUUID()), new FileShareOwnerId(UUID.randomUUID()),
                 new FileShareGranteeEmail(EMAIL), new FileShareRole(Role.VIEWER));
+    }
+
+    /** As {@link #aPendingShare()}, but read back the way the persistence adapter returns it — with
+     * the row id the service needs to delete it. */
+    private FileShare aPendingShare(UUID id) {
+        return FileShare.withId(
+                new FileShareId(id), new FileShareFileId(UUID.randomUUID()),
+                new FileShareOwnerId(UUID.randomUUID()), null, new FileShareRole(Role.VIEWER),
+                UUID.randomUUID(), EMAIL, null);
     }
 
     @Nested
@@ -76,8 +88,8 @@ class ClaimPendingFileSharesServiceTest {
         }
 
         @Test
-        void skipsAShareThatWouldCollideWithAnExistingGrantButClaimsTheRest() {
-            FileShare colliding = aPendingShare();
+        void deletesAShareThatWouldCollideWithAnExistingGrantButClaimsTheRest() {
+            FileShare colliding = aPendingShare(UUID.randomUUID());
             FileShare claimable = aPendingShare();
             given(findMemberByEmailPort.findMemberIdByEmail(EMAIL)).willReturn(Optional.of(memberId));
             given(findFileSharePort.findPendingByGranteeEmail(EMAIL)).willReturn(List.of(colliding, claimable));
@@ -88,6 +100,9 @@ class ClaimPendingFileSharesServiceTest {
 
             claimPendingFileSharesService.claimPendingFileShares(command);
 
+            // The losing invite is removed outright — leaving it would keep a live token and
+            // granteeEmail behind, surviving a later revoke of the real grant.
+            then(deleteFileSharePort).should().deleteFileShare(new FileShareId(colliding.getId()));
             then(saveFileSharePort).should().saveFileShare(claimable);
             then(saveFileSharePort).shouldHaveNoMoreInteractions();
             assertThat(colliding.getSharedWithUserId()).isNull();
