@@ -8,29 +8,23 @@ import com.moduDrive.file.application.port.in.usecase.ListFileSharesUseCase.File
 import com.moduDrive.file.application.port.out.FindFilePort;
 import com.moduDrive.file.application.port.out.FindFileSharePort;
 import com.moduDrive.file.application.port.out.FindMemberByIdPort;
-import com.moduDrive.file.application.port.out.FindMemberByIdPort.MemberSummary;
 import com.moduDrive.file.domain.model.File;
 import com.moduDrive.file.domain.model.FileShare;
 import com.moduDrive.file.domain.model.Namespace.NamespaceId;
 import com.moduDrive.file.domain.model.ShareScope;
 import com.moduDrive.file.exception.FileExceptionCase;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
-import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
-@Slf4j
 @UseCase
 @RequiredArgsConstructor
 class ListFileSharesService implements ListFileSharesUseCase {
-
-    private static final MemberSummary UNKNOWN_MEMBER = new MemberSummary(null, null);
 
     private final FindFilePort findFilePort;
     private final FindFileSharePort findFileSharePort;
@@ -89,7 +83,7 @@ class ListFileSharesService implements ListFileSharesUseCase {
                         inheritedShares.stream().map(i -> i.share().getSharedWithUserId()))
                 .filter(Objects::nonNull)
                 .distinct()
-                .collect(Collectors.toMap(Function.identity(), this::lookupMemberSummary));
+                .collect(Collectors.toMap(Function.identity(), findMemberByIdPort::findMemberByIdOrUnknown));
 
         boolean hasSharedDescendant = file.isDirectory() && hasSharedDescendant(file);
 
@@ -106,14 +100,5 @@ class ListFileSharesService implements ListFileSharesUseCase {
         // existsByFileIdIn on an empty id list is never called — an IN () clause is invalid SQL
         // on some drivers, and an empty subtree obviously has nothing shared in it anyway.
         return !descendantIds.isEmpty() && findFileSharePort.existsByFileIdIn(descendantIds);
-    }
-
-    private MemberSummary lookupMemberSummary(UUID memberId) {
-        try {
-            return findMemberByIdPort.findMemberById(memberId);
-        } catch (BusinessException e) {
-            log.warn("Failed to resolve member {} for share display, showing as unknown", memberId, e);
-            return UNKNOWN_MEMBER;
-        }
     }
 }

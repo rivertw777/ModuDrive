@@ -11,7 +11,9 @@ import java.time.LocalDateTime;
  * <ul>
  *   <li>{@code callerRole} — the caller's role on the file (rename needs EDITOR); null when they own it.</li>
  *   <li>{@code sharedByName}/{@code sharedByEmail} — who shared it; null when unresolved or owned.</li>
- *   <li>{@code sharedAt} — when the grant was made; null for an inherited grant or an owned file.</li>
+ *   <li>{@code sharedAt} — when the grant was made, direct or inherited (see
+ *       {@code FileAccessGuard.resolveGrant}); null only when there's no grant at all (owned, or
+ *       reachable purely through a LINK-scoped ancestor).</li>
  *   <li>{@code accessedAt} — when the caller last opened it; only set by 최근 문서함.</li>
  *   <li>{@code favoritedAt} — when the caller starred it; only set by 즐겨찾기.</li>
  * </ul>

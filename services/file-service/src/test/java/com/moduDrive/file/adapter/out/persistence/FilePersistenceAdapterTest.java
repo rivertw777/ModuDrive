@@ -319,6 +319,18 @@ class FilePersistenceAdapterTest {
         }
 
         @Test
+        @DisplayName("다른 이메일로는 게스트 공유가 조회되지 않는다")
+        void findByFileIdAndGranteeEmailMissesADifferentEmail() {
+            UUID fileIdValue = UUID.randomUUID();
+            filePersistenceAdapter.saveFileShare(FileShare.createPending(
+                    new FileShareFileId(fileIdValue), new FileShareOwnerId(UUID.randomUUID()),
+                    new FileShareGranteeEmail("guest@example.com"), new FileShareRole(Role.VIEWER)));
+
+            assertThat(filePersistenceAdapter.findByFileIdAndGranteeEmail(new FileId(fileIdValue), "someone-else@example.com"))
+                    .isEmpty();
+        }
+
+        @Test
         @DisplayName("대기 중인 게스트 공유를 클레임하면 회원 공유로 저장되고 더 이상 대기 목록에 없다")
         void claimsAPendingGuestShareAndPersistsIt() {
             UUID fileIdValue = UUID.randomUUID();
@@ -336,6 +348,10 @@ class FilePersistenceAdapterTest {
                     .get().extracting(FileShare::getRole).isEqualTo(Role.VIEWER);
             // token survives the claim so the emailed /public link still resolves
             assertThat(filePersistenceAdapter.findByToken(token)).isPresent();
+            // claim() clears granteeEmail (RevokeFileShareService.findGranteeShareByOwnIdentity
+            // depends on this row no longer being reachable by its old email once claimed).
+            assertThat(filePersistenceAdapter.findByFileIdAndGranteeEmail(new FileId(fileIdValue), "guest@example.com"))
+                    .isEmpty();
         }
 
         @Test

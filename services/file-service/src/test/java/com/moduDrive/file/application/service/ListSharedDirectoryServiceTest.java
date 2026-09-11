@@ -21,6 +21,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Answers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -45,7 +46,7 @@ class ListSharedDirectoryServiceTest {
     @Mock private FindFilePort findFilePort;
     @Mock private FindFileSharePort findFileSharePort;
     @Mock private FileFavoritePort fileFavoritePort;
-    @Mock private FindMemberByIdPort findMemberByIdPort;
+    @Mock(answer = Answers.CALLS_REAL_METHODS) private FindMemberByIdPort findMemberByIdPort;
     @Mock private FileAccessGuard fileAccessGuard;
     @InjectMocks private ListSharedDirectoryService listSharedDirectoryService;
 

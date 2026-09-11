@@ -143,9 +143,14 @@ class FileAccessGuard {
      * at all. {@link #resolveRole} uses this as its own last resort for a signed-in caller with no
      * named grant; {@code PublicFileResolver} uses it directly for an anonymous visitor, who has
      * nothing else to fall back on (issue #303 — the two routes share this one judgment instead of
-     * each re-deciding what "anyone with the link" means). Null when neither applies. */
-    Role linkRole(File file) {
-        return linkRoleFallback(file, ancestorDirectories(file));
+     * each re-deciding what "anyone with the link" means). Null when neither applies.
+     * <p>
+     * Takes the caller's own ancestor list rather than computing it internally — the only caller,
+     * {@code PublicFileResolver}, needs that same list right after for its guest-invite check, and
+     * computing it twice per anonymous request would both waste a query and widen the timing gap
+     * between "no ancestors to check" and "walked several" (issue #320). */
+    Role linkRole(File file, List<File> ancestors) {
+        return linkRoleFallback(file, ancestors);
     }
 
     /** The specific share row that explains why {@code callerId} can read {@code file} — their

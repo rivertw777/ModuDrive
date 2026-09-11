@@ -20,6 +20,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.Answers;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -41,7 +42,7 @@ class ListSharedWithMeServiceTest {
 
     @Mock private FindFileSharePort findFileSharePort;
     @Mock private FindFilePort findFilePort;
-    @Mock private FindMemberByIdPort findMemberByIdPort;
+    @Mock(answer = Answers.CALLS_REAL_METHODS) private FindMemberByIdPort findMemberByIdPort;
     @Mock private FileFavoritePort fileFavoritePort;
     @InjectMocks private ListSharedWithMeService listSharedWithMeService;
 

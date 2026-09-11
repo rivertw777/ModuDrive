@@ -14,19 +14,14 @@ import com.moduDrive.file.domain.model.FileShare;
 import com.moduDrive.file.domain.model.Permission;
 import com.moduDrive.file.exception.FileExceptionCase;
 import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
-import java.util.UUID;
 
-@Slf4j
 @UseCase
 @RequiredArgsConstructor
 class GetFileService implements GetFileUseCase {
-
-    private static final MemberSummary UNKNOWN_MEMBER = new MemberSummary(null, null);
 
     private final FindFilePort findFilePort;
     private final FindMemberByIdPort findMemberByIdPort;
@@ -61,18 +56,11 @@ class GetFileService implements GetFileUseCase {
         // "공유한 사용자" to name. Spec 3 gives a link-only visitor viewer access, not the owner's
         // identity: a link forwarded to a stranger must not leak whose drive it came from (#319).
         Optional<FileShare> grant = fileAccessGuard.resolveGrant(file, command.getCallerId());
-        MemberSummary sharedBy = grant.isPresent() ? lookupMember(file.getOwnerId()) : UNKNOWN_MEMBER;
+        MemberSummary sharedBy = grant.isPresent()
+                ? findMemberByIdPort.findMemberByIdOrUnknown(file.getOwnerId())
+                : FindMemberByIdPort.UNKNOWN_MEMBER;
         LocalDateTime sharedAt = grant.map(FileShare::getCreatedAt).orElse(null);
         return new FileView(file, fileAccessGuard.effectiveRole(file, command.getCallerId()),
                 sharedBy.name(), sharedBy.email(), sharedAt, null, null);
-    }
-
-    private MemberSummary lookupMember(UUID memberId) {
-        try {
-            return findMemberByIdPort.findMemberById(memberId);
-        } catch (RuntimeException e) {
-            log.warn("Failed to resolve sharer {} for file detail, showing as unknown", memberId, e);
-            return UNKNOWN_MEMBER;
-        }
     }
 }

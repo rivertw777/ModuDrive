@@ -52,7 +52,8 @@ class PublicFileResolver {
      * #matchesGuestInvite}). */
     File resolve(String fileId, String key) {
         File target = target(fileId);
-        if (fileAccessGuard.linkRole(target) != null || matchesGuestInvite(target, key)) {
+        List<File> ancestors = fileAccessGuard.ancestorDirectories(target);
+        if (fileAccessGuard.linkRole(target, ancestors) != null || matchesGuestInvite(target, key, ancestors)) {
             return target;
         }
         throw notFound();
@@ -63,7 +64,14 @@ class PublicFileResolver {
      * #matchesGuestInvite}), trashed/purged entries excluded. */
     List<File> resolveChildren(String fileId, String key) {
         File dir = target(fileId);
-        if (!dir.isDirectory() || (fileAccessGuard.linkRole(dir) == null && !matchesGuestInvite(dir, key))) {
+        // isDirectory() first, still short-circuiting before any FileAccessGuard call: a public
+        // file id used against this route is never going to authorize anything here anyway, so
+        // there's nothing for the ancestor walk below to add.
+        if (!dir.isDirectory()) {
+            throw notFound();
+        }
+        List<File> ancestors = fileAccessGuard.ancestorDirectories(dir);
+        if (fileAccessGuard.linkRole(dir, ancestors) == null && !matchesGuestInvite(dir, key, ancestors)) {
             throw notFound();
         }
         return findFilePort
@@ -82,21 +90,22 @@ class PublicFileResolver {
 
     /** True when {@code key} is a live guest invite minted for this exact entry, or for a
      * directory somewhere above it — a folder invite reaches its whole subtree, the same
-     * inheritance {@link FileAccessGuard#ancestorDirectories} gives a signed-in grantee, reused
-     * here so both routes agree on what "above it" means. */
-    private boolean matchesGuestInvite(File target, String key) {
+     * inheritance {@code ancestors} gives a signed-in grantee. Takes the caller's already-computed
+     * ancestor list rather than recomputing it: {@code linkRole} just walked the same path, and
+     * every rejection here answers the same FILE_NOT_FOUND either way, so doing the walk twice
+     * would only cost a query and widen the timing gap between rejection reasons for nothing. */
+    private boolean matchesGuestInvite(File target, String key, List<File> ancestors) {
         return parseUuid(key)
                 .flatMap(findFileSharePort::findByToken)
-                .filter(share -> mintedForTargetOrAnAncestor(share, target))
+                .filter(share -> mintedForTargetOrAnAncestor(share, target, ancestors))
                 .isPresent();
     }
 
-    private boolean mintedForTargetOrAnAncestor(FileShare share, File target) {
+    private boolean mintedForTargetOrAnAncestor(FileShare share, File target, List<File> ancestors) {
         if (share.getFileId().equals(target.getId())) {
             return true;
         }
-        return fileAccessGuard.ancestorDirectories(target).stream()
-                .anyMatch(ancestor -> share.getFileId().equals(ancestor.getId()));
+        return ancestors.stream().anyMatch(ancestor -> share.getFileId().equals(ancestor.getId()));
     }
 
     private Optional<UUID> parseUuid(String value) {
