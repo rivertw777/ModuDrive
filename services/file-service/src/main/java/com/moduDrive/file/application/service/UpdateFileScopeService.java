@@ -75,7 +75,13 @@ class UpdateFileScopeService implements UpdateFileScopeUseCase {
      * with it, each one sweeping its own subtree for the independent link scopes
      * {@link #restrictLinkedDescendants} exists to catch. Turning off a folder the caller never
      * named is the loud option, but the quiet one is worse: reporting RESTRICTED for a file that
-     * is still public (spec 2 asks for exactly this cascade). */
+     * is still public (spec 2 asks for exactly this cascade).
+     * <p>
+     * Only the root-most LINK ancestor is swept, and the walk stops there: its subtree already
+     * contains every LINK ancestor below it, and {@code ancestorDirectories} returns root-most
+     * first, so the first hit is the outermost one. Sweeping each LINK ancestor in turn rewrites the
+     * same rows once per level — for a chain near the drive root, a large slice of it to restrict a
+     * single file — and lands on exactly the same end state. */
     private void restrictLinkedAncestors(File file) {
         for (File ancestor : fileAccessGuard.ancestorDirectories(file)) {
             if (ancestor.getAccessScope() != ShareScope.LINK) {
@@ -84,6 +90,7 @@ class UpdateFileScopeService implements UpdateFileScopeUseCase {
             ancestor.disableLinkSharing();
             saveFilePort.saveFile(ancestor);
             restrictLinkedDescendants(ancestor);
+            return;
         }
     }
 

@@ -69,10 +69,19 @@ class RevokeFileShareService implements RevokeFileShareUseCase {
     /** The same grantee's share on another file. A claimed share points at a member id; a guest
      * invite still waiting to be claimed carries only the invited email (see
      * {@link FileShare#createPending}) — match on whichever identity this row actually has, so a
-     * pending guest's ancestor invites are revoked alongside a registered member's. */
+     * pending guest's ancestor invites are revoked alongside a registered member's. Both identities
+     * are tried, not just whichever one the revoked row leads with: the same person can be recorded
+     * one way here and the other way above, because a claim that skipped a row (the file already had
+     * a direct grant — see {@code ClaimPendingFileSharesService}) leaves an unclaimed, email-only
+     * invite sitting over a member-id grant. Matching on one column alone walks straight past it and
+     * leaves the ancestor still handing out access. */
     private Optional<FileShare> findGranteeShare(FileId ancestorId, FileShare revoked) {
         if (revoked.getSharedWithUserId() != null) {
-            return findFileSharePort.findByFileIdAndSharedWithUserId(ancestorId, revoked.getSharedWithUserId());
+            Optional<FileShare> byUserId =
+                    findFileSharePort.findByFileIdAndSharedWithUserId(ancestorId, revoked.getSharedWithUserId());
+            if (byUserId.isPresent()) {
+                return byUserId;
+            }
         }
         if (revoked.getGranteeEmail() != null) {
             return findFileSharePort.findByFileIdAndGranteeEmail(ancestorId, revoked.getGranteeEmail());
