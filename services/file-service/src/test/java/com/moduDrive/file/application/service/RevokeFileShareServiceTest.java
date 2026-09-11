@@ -121,6 +121,8 @@ class RevokeFileShareServiceTest {
 
             then(deleteFileSharePort).should().deleteFileShare(new FileShareId(shareId));
             then(deleteFileSharePort).should().deleteFileShare(new FileShareId(parentShareId));
+            // Every ancestor was found by id, so the email fallback never has anything to resolve.
+            then(findMemberByIdPort).shouldHaveNoInteractions();
         }
 
         @Test
@@ -143,6 +145,7 @@ class RevokeFileShareServiceTest {
 
             then(deleteFileSharePort).should().deleteFileShare(new FileShareId(grandParentShareId));
             then(deleteFileSharePort).should().deleteFileShare(new FileShareId(parentShareId));
+            then(findMemberByIdPort).shouldHaveNoInteractions();
         }
 
         @Test
@@ -165,16 +168,21 @@ class RevokeFileShareServiceTest {
             revokeFileShareService.revokeFileShare(command);
 
             then(deleteFileSharePort).should().deleteFileShare(new FileShareId(parentShareId));
+            // A pending-row revoke has no member id to fall back from — the fallback path
+            // (member-service lookup) is only ever reached from a member-id row.
+            then(findMemberByIdPort).shouldHaveNoInteractions();
         }
 
         @Test
         void fallsBackToTheEmailWhenTheAncestorInviteWasNeverClaimed() {
             // The direct grant names a member (no email column of its own — FileShare.claim()
             // always clears it), but the ancestor's invite for the same person is still an
-            // unclaimed, email-only row — ClaimPendingFileSharesService skips a pending invite
-            // whose file already has a proper grant. Looking up by member id alone finds nothing
-            // above; the fallback has to resolve this person's email via member-service instead
-            // of reading it off the revoked row (which never has one).
+            // unclaimed, email-only row — the claim that would have converted it never went
+            // through (a lost MemberSignedUp event, or the invite's own email not matching the
+            // member's, so ClaimPendingFileSharesService.ownsEmail rejected it). Looking up by
+            // member id alone finds nothing above; the fallback has to resolve this person's
+            // email via member-service instead of reading it off the revoked row (which never has
+            // one).
             File parent = directory("projects", "/");
             UUID parentShareId = UUID.randomUUID();
             given(findFilePort.findById(command.getFileId())).willReturn(Optional.of(file));
@@ -212,21 +220,28 @@ class RevokeFileShareServiceTest {
         }
 
         @Test
-        void deletesNothingExtraWhenNoAncestorGrantsThemAnything() {
-            File parent = directory("projects", "/");
+        @DisplayName("조상 여러 개가 아무것도 주지 않아도 member-service는 revoke당 최대 1번만 부른다 (조상 수만큼 왕복하면 안 됨)")
+        void deletesNothingExtraWhenNoAncestorGrantsThemAnythingAndOnlyResolvesEmailOnce() {
+            File grandParent = directory("work", "/");
+            File parent = directory("projects", "/work");
             given(findFilePort.findById(command.getFileId())).willReturn(Optional.of(file));
             given(findFileSharePort.findByShareId(command.getShareId())).willReturn(Optional.of(share(fileId)));
-            given(fileAccessGuard.ancestorDirectories(file)).willReturn(List.of(parent));
+            given(fileAccessGuard.ancestorDirectories(file)).willReturn(List.of(grandParent, parent));
+            given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(grandParent.getId()), granteeId))
+                    .willReturn(Optional.empty());
             given(findFileSharePort.findByFileIdAndSharedWithUserId(new FileId(parent.getId()), granteeId))
                     .willReturn(Optional.empty());
             given(findMemberByIdPort.findMemberById(granteeId))
                     .willReturn(new MemberSummary("river", "river@example.com"));
+            given(findFileSharePort.findByFileIdAndGranteeEmail(new FileId(grandParent.getId()), "river@example.com"))
+                    .willReturn(Optional.empty());
             given(findFileSharePort.findByFileIdAndGranteeEmail(new FileId(parent.getId()), "river@example.com"))
                     .willReturn(Optional.empty());
 
             revokeFileShareService.revokeFileShare(command);
 
             then(deleteFileSharePort).should(times(1)).deleteFileShare(any(FileShareId.class));
+            then(findMemberByIdPort).should(times(1)).findMemberById(granteeId);
         }
     }
 

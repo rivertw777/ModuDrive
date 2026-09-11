@@ -16,6 +16,8 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -65,29 +67,41 @@ class RevokeFileShareService implements RevokeFileShareUseCase {
      * the spec's 공유 권한 삭제 rule asks for. Every ancestor is swept, not just the nearest, since
      * any one of them left behind re-grants access on its own. */
     private void revokeAncestorGrants(File file, FileShare revoked) {
+        UUID granteeId = revoked.getSharedWithUserId();
+        List<FileId> missed = new ArrayList<>();
         for (File ancestor : fileAccessGuard.ancestorDirectories(file)) {
-            findGranteeShare(new FileId(ancestor.getId()), revoked)
-                    .ifPresent(grant -> deleteFileSharePort.deleteFileShare(new FileShare.FileShareId(grant.getId())));
+            FileId ancestorId = new FileId(ancestor.getId());
+            Optional<FileShare> found = findGranteeShareByOwnIdentity(ancestorId, revoked);
+            if (found.isPresent()) {
+                deleteFileSharePort.deleteFileShare(new FileShare.FileShareId(found.get().getId()));
+            } else if (granteeId != null) {
+                // A pending-row revoke (granteeId == null) has no other identity to fall back to,
+                // so it has nothing to add to this list — only a member-id miss can still turn
+                // into an email-based hit below.
+                missed.add(ancestorId);
+            }
         }
+        if (missed.isEmpty()) {
+            return;
+        }
+        // One member-service round trip per revoke at most, not one per missed ancestor: the
+        // email for this fallback can't come from `revoked` itself ({@link FileShare#claim}
+        // always clears granteeEmail once a row is claimed, issue #323), and a revoke with
+        // several ancestors that simply don't grant this person anything — the common case — must
+        // not pay for a Feign call per level inside this open transaction.
+        resolveEmail(granteeId).ifPresent(email -> missed.forEach(ancestorId ->
+                findFileSharePort.findByFileIdAndGranteeEmail(ancestorId, email)
+                        .ifPresent(grant -> deleteFileSharePort.deleteFileShare(new FileShare.FileShareId(grant.getId())))));
     }
 
-    /** The same grantee's share on another file, tried both ways: a claimed member's ancestor
-     * grant is found by id first, but the same person can still have an unclaimed, email-only
-     * invite sitting on an ancestor (see {@code ClaimPendingFileSharesService}) — matching by id
-     * alone would walk straight past it and leave that ancestor still handing out access. The
-     * email for that lookup can't come from {@code revoked} itself: {@link FileShare#claim}
-     * always clears {@code granteeEmail} once a row is claimed, so a member-id row never carries
-     * one (issue #323) — it has to be resolved via member-service instead, and only when the id
-     * lookup actually misses, so a normal revoke with no ancestor invite never pays for it. */
-    private Optional<FileShare> findGranteeShare(FileId ancestorId, FileShare revoked) {
-        UUID granteeId = revoked.getSharedWithUserId();
-        if (granteeId != null) {
-            Optional<FileShare> byUserId = findFileSharePort.findByFileIdAndSharedWithUserId(ancestorId, granteeId);
-            if (byUserId.isPresent()) {
-                return byUserId;
-            }
-            return resolveEmail(granteeId)
-                    .flatMap(email -> findFileSharePort.findByFileIdAndGranteeEmail(ancestorId, email));
+    /** The same grantee's ancestor share, found without ever leaving this service: by member id
+     * for a claimed grant, or by the revoked row's own email for a still-unclaimed guest invite.
+     * Empty here doesn't mean "no ancestor grant" — a member-id miss still has the email fallback
+     * in {@link #revokeAncestorGrants} to try, hoisted out of this method so it runs at most once
+     * per revoke instead of once per ancestor. */
+    private Optional<FileShare> findGranteeShareByOwnIdentity(FileId ancestorId, FileShare revoked) {
+        if (revoked.getSharedWithUserId() != null) {
+            return findFileSharePort.findByFileIdAndSharedWithUserId(ancestorId, revoked.getSharedWithUserId());
         }
         if (revoked.getGranteeEmail() != null) {
             return findFileSharePort.findByFileIdAndGranteeEmail(ancestorId, revoked.getGranteeEmail());
