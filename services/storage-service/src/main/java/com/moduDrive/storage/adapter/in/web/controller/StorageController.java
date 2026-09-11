@@ -111,8 +111,9 @@ class StorageController {
     }
 
     /** Reached through the gateway's permitAll list, so there is deliberately no X_USER_ID —
-     * the {@code key} is the whole credential and file-service is what validates it against
-     * {@code fileId}. Streamed for the same reason as {@link #downloadFile}. */
+     * {@code fileId} alone authorizes a LINK-scoped entry, {@code key} authorizes a guest invite,
+     * and file-service (not this service) is what decides which, if either, applies. Streamed for
+     * the same reason as {@link #downloadFile}. */
     @GetMapping("/api/v1/storage/public/{fileId}/download")
     public ResponseEntity<StreamingResponseBody> publicDownloadFile(@PathVariable String fileId,
                                                                     @RequestParam(required = false) String key) {
@@ -159,8 +160,9 @@ class StorageController {
     }
 
     /** Inline counterpart to {@link #publicDownloadFile}, same relationship as {@link #viewFile}
-     * is to {@link #downloadFile}. The {@code key} already is the full credential, so no
-     * streamToken dance is needed here — it goes straight in the URL either way. */
+     * is to {@link #downloadFile}. {@code fileId}/{@code key} are already the whole credential
+     * between them, so no streamToken dance is needed here — it goes straight in the URL either
+     * way. */
     @GetMapping("/api/v1/storage/public/{fileId}/view")
     public ResponseEntity<byte[]> viewPublicFile(
             @PathVariable String fileId,
