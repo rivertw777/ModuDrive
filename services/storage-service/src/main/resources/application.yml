@@ -31,7 +31,8 @@ storage:
   download-quota-per-file-bytes: ${STORAGE_DOWNLOAD_QUOTA_PER_FILE_BYTES:10737418240}
   download-quota-window: ${STORAGE_DOWNLOAD_QUOTA_WINDOW:PT24H}
 
-# Shared service-to-service secret sent on outbound /internal/** calls to file-service.
+# Shared service-to-service secret: presented on outbound /internal/** calls to file-service,
+# and verified on this service's own /internal/** (see InternalTokenFilter).
 internal:
   service:
     token: ${INTERNAL_SERVICE_TOKEN}
