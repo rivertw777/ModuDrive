@@ -1,7 +1,11 @@
 plugins {
 	id 'java'
 	id 'org.springframework.boot' version '4.1.1'
-	id 'org.owasp.dependencycheck' version '13.0.0'
+	// Pinned below 13.0.0: that release ships without a NVD API key with an empty string
+	// instead of null internally, which the NVD client sends as a literal (rejected) apiKey
+	// header and crashes on — dependency-check/DependencyCheck#8715, fixed upstream by #8716
+	// but not yet in a release. Bump once a release past 13.0.0 ships that fix (issue #339).
+	id 'org.owasp.dependencycheck' version '12.2.2'
 }
 
 ext {
@@ -16,7 +20,13 @@ ext {
 // API key (repo secret NVD_API_KEY, see .github/workflows/dependency-check.yml) makes the NVD
 // data sync fast; without one the scan still runs, just much slower against the public feed.
 dependencyCheck {
-	nvd.apiKey = System.getenv('NVD_API_KEY')
+	// Only set when non-blank: an unset repo secret arrives as "" (GitHub Actions' value for
+	// it, not null), and passing that through would defeat the plugin-version pin above the
+	// moment this ever gets bumped past 13.0.0 again.
+	String nvdApiKey = System.getenv('NVD_API_KEY')
+	if (nvdApiKey) {
+		nvd.apiKey = nvdApiKey
+	}
 	// CVSS 0-10; only fail the build on genuinely severe, unaddressed findings. Below this,
 	// findings still show up in the HTML/JSON report as something to triage, not a hard gate.
 	failBuildOnCVSS = 7
