@@ -17,7 +17,8 @@ import java.util.UUID;
 
 /**
  * Turns a {@code (fileId, key)} pair into a file for the unauthenticated routes — the
- * Google-Drive-style stable link {@code /public/{fileId}}. {@code fileId} identifies the entry;
+ * Google-Drive-style stable link {@code /files/{fileId}} (spec 3; {@code /public/{fileId}} is a
+ * legacy redirect alias, not the address itself). {@code fileId} identifies the entry;
  * access is granted through one of two independent means:
  * <ul>
  *   <li>{@code fileId} alone, when the entry (or an ancestor folder) is scope LINK — see

@@ -103,6 +103,7 @@ class ClaimPendingFileSharesServiceTest {
             // The losing invite is removed outright — leaving it would keep a live token and
             // granteeEmail behind, surviving a later revoke of the real grant.
             then(deleteFileSharePort).should().deleteFileShare(new FileShareId(colliding.getId()));
+            then(deleteFileSharePort).shouldHaveNoMoreInteractions();
             then(saveFileSharePort).should().saveFileShare(claimable);
             then(saveFileSharePort).shouldHaveNoMoreInteractions();
             assertThat(colliding.getSharedWithUserId()).isNull();
