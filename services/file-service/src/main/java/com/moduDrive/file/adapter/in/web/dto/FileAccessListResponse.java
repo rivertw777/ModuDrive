@@ -25,7 +25,10 @@ public record FileAccessListResponse(
          * reachable through them. Empty unless an ancestor folder is link-shared. */
         List<InheritedLinkResponse> inheritedLinks,
         /** See {@link FileSharesView#hasSharedDescendant()}. */
-        boolean hasSharedDescendant
+        boolean hasSharedDescendant,
+        /** So the client can word a confirmation ("이 파일에" vs "이 폴더에") without guessing —
+         * see MemberAccessList's guest role-pick confirm. */
+        boolean directory
 ) {
     /** A directory above this file that is currently link-shared — this file's own scope stays
      * whatever it is, but it's reachable through this ancestor's LINK scope regardless (see
@@ -72,7 +75,8 @@ public record FileAccessListResponse(
                 view.file().getAccessScope(),
                 shares,
                 inheritedLinks,
-                view.hasSharedDescendant()
+                view.hasSharedDescendant(),
+                view.file().isDirectory()
         );
     }
 }

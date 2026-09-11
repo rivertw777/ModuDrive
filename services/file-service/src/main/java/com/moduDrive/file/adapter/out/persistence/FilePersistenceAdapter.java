@@ -317,7 +317,7 @@ class FilePersistenceAdapter implements
 
     @Override
     public void deleteFileShare(FileShareId shareId) {
-        fileShareRepository.deleteById(shareId.value());
+        fileShareRepository.deleteByIdBulk(shareId.value());
     }
 
     @Override

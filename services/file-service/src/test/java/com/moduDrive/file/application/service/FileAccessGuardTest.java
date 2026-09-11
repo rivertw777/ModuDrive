@@ -137,6 +137,18 @@ class FileAccessGuardTest {
                     .extracting(e -> ((BusinessException) e).getExceptionCase())
                     .isEqualTo(FileExceptionCase.FILE_ACCESS_DENIED);
         }
+
+        @Test
+        @DisplayName("거부 응답은 파일/폴더 여부를 함께 담는다 — 이미 찾은 대상이라 존재 자체를 새로 드러내는 건 아니다")
+        void deniedResponseCarriesIsDirectory() {
+            File dir = directory(UUID.randomUUID(), "/", "새 폴더");
+
+            Throwable thrown = catchThrowable(() -> fileAccessGuard.requireOwner(dir, callerId));
+
+            assertThat(thrown).isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getData())
+                    .isEqualTo(java.util.Map.of("isDirectory", true));
+        }
     }
 
     @Nested

@@ -35,6 +35,10 @@ public class ApiResponse<T> {
         return new ApiResponse<>(exceptionCase.getHttpStatus(), exceptionCase.getMessage(), null);
     }
 
+    public static <T> ApiResponse<T> error(ExceptionCase exceptionCase, T data) {
+        return new ApiResponse<>(exceptionCase.getHttpStatus(), exceptionCase.getMessage(), data);
+    }
+
     public static <T> ApiResponse<T> error(HttpStatus httpStatus, String message) {
         return new ApiResponse<>(httpStatus, message, null);
     }

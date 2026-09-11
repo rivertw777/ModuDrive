@@ -70,7 +70,8 @@ class ListFileSharesControllerTest {
                     .andExpect(jsonPath("$.data.scope").value("RESTRICTED"))
                     .andExpect(jsonPath("$.data.shares[0].role").value("EDITOR"))
                     .andExpect(jsonPath("$.data.shares[0].sharedWithEmail").value("river@modudrive.com"))
-                    .andExpect(jsonPath("$.data.shares[0].sharedWithName").value("river"));
+                    .andExpect(jsonPath("$.data.shares[0].sharedWithName").value("river"))
+                    .andExpect(jsonPath("$.data.directory").value(false));
         }
     }
 
