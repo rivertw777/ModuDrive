@@ -26,3 +26,9 @@ resilience4j:
     instances:
       memberServiceCircuitBreaker:
         baseConfig: default
+
+# Shared service-to-service secret for member-service's /internal/** routes (see
+# InternalTokenRequestInterceptorConfig).
+internal:
+  service:
+    token: ${INTERNAL_SERVICE_TOKEN}
