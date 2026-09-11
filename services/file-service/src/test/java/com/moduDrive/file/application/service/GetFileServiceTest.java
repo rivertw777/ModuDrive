@@ -32,6 +32,7 @@ import static org.assertj.core.api.Assertions.catchThrowable;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.BDDMockito.willThrow;
 
 @ExtendWith(MockitoExtension.class)
@@ -53,6 +54,12 @@ class GetFileServiceTest {
                 new FileId(fileId), new FileNamespaceId(UUID.randomUUID()),
                 new FileName("report.pdf"), new FilePath("/1/docs"),
                 new FileOwnerId(ownerId), null, null, status, new FileIsDirectory(false));
+    }
+
+    private FileShare grantTo(UUID sharedWithUserId, LocalDateTime sharedAt) {
+        return FileShare.withId(new FileShareId(UUID.randomUUID()),
+                new FileShareFileId(UUID.randomUUID()), new FileShareOwnerId(otherOwnerId),
+                new FileShareSharedWithUserId(sharedWithUserId), new FileShareRole(Role.VIEWER), sharedAt);
     }
 
     @Nested
@@ -83,11 +90,13 @@ class GetFileServiceTest {
             given(fileAccessGuard.effectiveRole(any(File.class), eq(callerId))).willReturn(Role.EDITOR);
             given(findMemberByIdPort.findMemberById(otherOwnerId))
                     .willReturn(new MemberSummary("홍길동", "owner@modudrive.com"));
-            given(fileAccessGuard.resolveGrant(any(File.class), eq(callerId))).willReturn(Optional.empty());
+            given(fileAccessGuard.resolveGrant(any(File.class), eq(callerId)))
+                    .willReturn(Optional.of(grantTo(callerId, LocalDateTime.of(2026, 9, 4, 15, 5))));
 
             FileView result = getFileService.getFile(command);
 
             assertThat(result.callerRole()).isEqualTo(Role.EDITOR);
+            assertThat(result.sharedByName()).isEqualTo("홍길동");
             assertThat(result.sharedByEmail()).isEqualTo("owner@modudrive.com");
             assertThat(result.file().isFavorite()).isTrue();
         }
@@ -96,9 +105,7 @@ class GetFileServiceTest {
         @DisplayName("이 파일 자체엔 직접 공유가 없고 상위 폴더를 통해서만 접근 가능해도 공유된 날짜가 채워진다")
         void fillsSharedAtFromAnInheritedGrantWhenTheFileHasNoDirectShare() {
             LocalDateTime sharedAt = LocalDateTime.of(2026, 9, 4, 15, 5);
-            FileShare inheritedGrant = FileShare.withId(new FileShareId(UUID.randomUUID()),
-                    new FileShareFileId(UUID.randomUUID()), new FileShareOwnerId(otherOwnerId),
-                    new FileShareSharedWithUserId(callerId), new FileShareRole(Role.VIEWER), sharedAt);
+            FileShare inheritedGrant = grantTo(callerId, sharedAt);
             given(findFilePort.findById(command.getFileId()))
                     .willReturn(Optional.of(fileOwnedBy(otherOwnerId, FileStatus.UPLOADED)));
             given(fileAccessGuard.effectiveRole(any(File.class), eq(callerId))).willReturn(Role.VIEWER);
@@ -109,6 +116,29 @@ class GetFileServiceTest {
             FileView result = getFileService.getFile(command);
 
             assertThat(result.sharedAt()).isEqualTo(sharedAt);
+        }
+    }
+
+    @Nested
+    @DisplayName("직접/상속 공유 없이 링크로만 접근한 로그인 사용자가 조회할 때")
+    class WhenLinkOnlyVisitor {
+
+        @Test
+        @DisplayName("뷰어로 열람은 되지만 소유자 이름/이메일은 응답에서 비어있다 (#319)")
+        void hidesTheOwnerIdentity() {
+            given(findFilePort.findById(command.getFileId()))
+                    .willReturn(Optional.of(fileOwnedBy(otherOwnerId, FileStatus.UPLOADED)));
+            // LINK 폴백으로만 VIEWER를 얻은 경우 — 공유 행(grant)이 존재하지 않는다.
+            given(fileAccessGuard.resolveGrant(any(File.class), eq(callerId))).willReturn(Optional.empty());
+            given(fileAccessGuard.effectiveRole(any(File.class), eq(callerId))).willReturn(Role.VIEWER);
+
+            FileView result = getFileService.getFile(command);
+
+            assertThat(result.callerRole()).isEqualTo(Role.VIEWER);
+            assertThat(result.sharedByName()).isNull();
+            assertThat(result.sharedByEmail()).isNull();
+            assertThat(result.sharedAt()).isNull();
+            then(findMemberByIdPort).shouldHaveNoInteractions();
         }
     }
 

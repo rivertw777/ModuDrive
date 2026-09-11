@@ -30,12 +30,13 @@ class UpdateFileScopeService implements UpdateFileScopeUseCase {
         fileAccessGuard.requireOwner(file, command.getCallerId());
 
         if (command.getScope() == ShareScope.LINK) {
-            // A link is a bearer credential anyone who obtains it can use, unlike a named
-            // RESTRICTED grant — so it may only ever hand out read-only access.
+            // Viewer-only is enforced by the domain (File#enableLinkSharing takes no role at all),
+            // so this check exists only to answer an explicit editor-link request with a clear
+            // error instead of silently downgrading it.
             if (command.getRole() != Role.VIEWER) {
                 throw new BusinessException(FileExceptionCase.INVALID_LINK_ROLE);
             }
-            file.enableLinkSharing(command.getRole());
+            file.enableLinkSharing();
         } else {
             // Capture before mutating: an already-RESTRICTED directory re-sent RESTRICTED is a
             // no-op for the directory itself, but without this check the sweep below would still

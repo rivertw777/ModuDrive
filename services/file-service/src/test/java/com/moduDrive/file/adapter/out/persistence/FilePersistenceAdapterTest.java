@@ -202,19 +202,19 @@ class FilePersistenceAdapterTest {
     class WhenPersistingLinkSharing {
 
         @Test
-        @DisplayName("LINK로 전환한 파일은 scope/role이 그대로 다시 조회된다")
+        @DisplayName("LINK로 전환한 파일은 scope/뷰어 role이 그대로 다시 조회된다")
         void roundTripsAccessScopeAndLinkRole() {
             File saved = filePersistenceAdapter.saveFile(File.create(
                     new FileNamespaceId(namespaceIdValue), new FileName("public.pdf"),
                     new FilePath("/1"), new FileOwnerId(UUID.randomUUID()), new FileIsDirectory(false)));
-            saved.enableLinkSharing(Role.EDITOR);
+            saved.enableLinkSharing();
             File linked = filePersistenceAdapter.saveFile(saved);
 
             var result = filePersistenceAdapter.findById(new File.FileId(linked.getId()));
 
             assertThat(result).isPresent();
             assertThat(result.get().getAccessScope()).isEqualTo(ShareScope.LINK);
-            assertThat(result.get().getLinkRole()).isEqualTo(Role.EDITOR);
+            assertThat(result.get().getLinkRole()).isEqualTo(Role.VIEWER);
         }
 
         @Test
@@ -223,7 +223,7 @@ class FilePersistenceAdapterTest {
             File saved = filePersistenceAdapter.saveFile(File.create(
                     new FileNamespaceId(namespaceIdValue), new FileName("was-public.pdf"),
                     new FilePath("/1"), new FileOwnerId(UUID.randomUUID()), new FileIsDirectory(false)));
-            saved.enableLinkSharing(Role.VIEWER);
+            saved.enableLinkSharing();
             File linked = filePersistenceAdapter.saveFile(saved);
             linked.disableLinkSharing();
             filePersistenceAdapter.saveFile(linked);

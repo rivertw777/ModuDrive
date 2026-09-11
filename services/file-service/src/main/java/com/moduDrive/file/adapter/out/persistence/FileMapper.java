@@ -47,9 +47,10 @@ class FileMapper {
         // Rows written before access_scope existed read back as null — treat that as RESTRICTED
         // so a legacy row can never be mistaken for a publicly linkable one.
         if (entity.getAccessScope() == ShareScope.LINK) {
-            // Rows written before link_role existed read back as null — the link they handed out
-            // was viewer-only at the time, so that is what it stays.
-            file.enableLinkSharing(entity.getLinkRole() != null ? entity.getLinkRole() : Role.VIEWER);
+            // link_role is deliberately not read back: a link is viewer-only by domain invariant
+            // (see File#enableLinkSharing, spec 2), so a row written before the column existed
+            // (null) and one somehow carrying EDITOR resolve the same viewer-only way (#318).
+            file.enableLinkSharing();
         }
         return file;
     }

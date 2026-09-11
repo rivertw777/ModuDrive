@@ -212,7 +212,7 @@ class ListFileSharesServiceTest {
 
         @Test
         void reportsLinkSharedAncestorAsInheritedLinkSource() {
-            parentDir.enableLinkSharing(Role.VIEWER);
+            parentDir.enableLinkSharing();
             given(findFilePort.findById(command.getFileId())).willReturn(Optional.of(file));
             given(findFileSharePort.findByFileId(command.getFileId())).willReturn(List.of());
             given(fileAccessGuard.ancestorDirectories(any(File.class))).willReturn(List.of(parentDir));

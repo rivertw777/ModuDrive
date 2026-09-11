@@ -35,3 +35,8 @@ resilience4j:
         baseConfig: default
       storageServiceCircuitBreaker:
         baseConfig: default
+
+# Shared service-to-service secret for the /internal/** routes (see InternalTokenFilter).
+internal:
+  service:
+    token: ${INTERNAL_SERVICE_TOKEN}
